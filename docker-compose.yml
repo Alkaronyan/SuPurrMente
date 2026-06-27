@@ -1,0 +1,24 @@
+services:
+  tracker:
+    build: ./app
+    env_file: .env
+    volumes:
+      - /mnt/nas/cat-weights:/data
+      - ./app/config.yml:/app/config.yml
+    restart: unless-stopped
+
+  datasette:
+    build: ./app
+    command: >
+      datasette /data/weights.db
+      --host 0.0.0.0
+      --port 8001
+      --metadata /app/datasette.yml
+      --static static:/app/static
+    volumes:
+      - /mnt/nas/cat-weights:/data
+      - ./app/datasette.yml:/app/datasette.yml
+      - ./app/static:/app/static
+    ports:
+      - "8001:8001"
+    restart: unless-stopped

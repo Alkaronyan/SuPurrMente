@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: requires live credentials (GMAIL_APP_PASSWORD, FROM_EMAIL, TO_EMAILS)",
+]

@@ -1,0 +1,40 @@
+title: SuPurrMente
+description: Peso de Pirata y Robin — histórico desde la Litter-Robot 4
+
+databases:
+  weights:
+    tables:
+      visits:
+        sort_desc: timestamp
+    queries:
+      pirata_daily:
+        title: Pirata — promedio diario
+        sql: |
+          SELECT
+            date(timestamp) AS dia,
+            round(avg(weight_kg), 2) AS peso,
+            count(*) AS visitas
+          FROM visits
+          WHERE cat = 'pirata'
+            AND timestamp >= date('now', '-90 days')
+          GROUP BY dia
+          ORDER BY dia
+      robin_daily:
+        title: Robin — promedio diario
+        sql: |
+          SELECT
+            date(timestamp) AS dia,
+            round(avg(weight_kg), 2) AS peso,
+            count(*) AS visitas
+          FROM visits
+          WHERE cat = 'robin'
+            AND timestamp >= date('now', '-90 days')
+          GROUP BY dia
+          ORDER BY dia
+      resumen_reciente:
+        title: Últimas 48h
+        sql: |
+          SELECT timestamp, cat, weight_kg, confidence
+          FROM visits
+          WHERE timestamp >= datetime('now', '-48 hours')
+          ORDER BY timestamp DESC

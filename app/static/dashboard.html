@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuPurrMente</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      margin: 0;
+      padding: 1.5rem;
+    }
+    header {
+      max-width: 960px;
+      margin: 0 auto 1.5rem;
+    }
+    h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+    .subtitle { margin: 0; color: #777; font-size: 0.9rem; }
+    .range-selector {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .range-selector label { font-size: 0.85rem; color: #555; }
+    .range-selector select,
+    .range-selector input[type="date"] {
+      font-size: 0.85rem;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: white;
+      color: #333;
+    }
+    .custom-fields {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .custom-fields[hidden] { display: none; }
+    .nav-arrows {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .nav-arrows[hidden] { display: none; }
+    .nav-arrows button {
+      font-size: 0.9rem;
+      line-height: 1;
+      padding: 0.3rem 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: white;
+      color: #333;
+      cursor: pointer;
+    }
+    .nav-arrows button:hover { background: #ececec; }
+    .nav-arrows button:active { background: #ddd; }
+    .range-label {
+      font-size: 0.8rem;
+      color: #999;
+      margin-left: 0.25rem;
+    }
+    .charts {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card h2 {
+      margin: 0 0 0.25rem;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .card h2 .dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .card .stats {
+      font-size: 0.78rem;
+      color: #888;
+      margin-bottom: 0.75rem;
+    }
+    .chart-sub {
+      font-size: 0.78rem;
+      color: #888;
+      margin: 1rem 0 0.25rem;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .chart-sub:hover { color: #555; }
+    .chart-sub .arrow {
+      font-size: 0.6rem;
+      display: inline-block;
+      transition: transform 0.15s;
+    }
+    .chart-sub.collapsed .arrow { transform: rotate(-90deg); }
+    .empty { font-size: 0.85rem; color: #aaa; margin-top: 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SuPurrMente</h1>
+    <p class="subtitle">Evolución del peso — Pirata &amp; Robin</p>
+    <div class="range-selector">
+      <label for="days">Mostrar:</label>
+      <select id="days" onchange="onModeChange()">
+        <option value="30">Últimos 30 días</option>
+        <option value="60">Últimos 60 días</option>
+        <option value="90" selected>Últimos 90 días</option>
+        <option value="180">Últimos 6 meses</option>
+        <option value="365">Último año</option>
+        <option value="all">Toda la historia</option>
+        <option value="custom">Personalizada</option>
+      </select>
+
+      <span class="custom-fields" id="custom-fields" hidden>
+        <label for="start-date">Desde:</label>
+        <input type="date" id="start-date" onchange="onCustomDateChange()">
+        <label for="end-date">Hasta:</label>
+        <input type="date" id="end-date" onchange="onCustomDateChange()">
+      </span>
+
+      <span class="nav-arrows" id="nav-arrows">
+        <button type="button" id="prev-btn" onclick="shiftRange(-1)" title="Periodo anterior" aria-label="Periodo anterior">◀</button>
+        <button type="button" id="next-btn" onclick="shiftRange(1)" title="Periodo siguiente" aria-label="Periodo siguiente">▶</button>
+      </span>
+
+      <span class="range-label" id="range-label"></span>
+    </div>
+  </header>
+
+  <div class="charts">
+    <div class="card" id="card-pirata">
+      <h2><span class="dot" style="background:#e74c3c"></span>Pirata</h2>
+      <div class="stats" id="stats-pirata">Cargando...</div>
+      <div class="chart-sub" onclick="toggleChart('chart-pirata', this)"><span class="arrow">▼</span>Peso (kg)</div>
+      <canvas id="chart-pirata"></canvas>
+      <div class="chart-sub" onclick="toggleChart('freq-pirata', this)"><span class="arrow">▼</span>Visitas por día</div>
+      <canvas id="freq-pirata"></canvas>
+    </div>
+    <div class="card" id="card-robin">
+      <h2><span class="dot" style="background:#3498db"></span>Robin</h2>
+      <div class="stats" id="stats-robin">Cargando...</div>
+      <div class="chart-sub" onclick="toggleChart('chart-robin', this)"><span class="arrow">▼</span>Peso (kg)</div>
+      <canvas id="chart-robin"></canvas>
+      <div class="chart-sub" onclick="toggleChart('freq-robin', this)"><span class="arrow">▼</span>Visitas por día</div>
+      <canvas id="freq-robin"></canvas>
+    </div>
+    <div class="card" id="card-caja">
+      <h2><span class="dot" style="background:#7f8c8d"></span>Caja — uso y estado</h2>
+      <div class="stats" id="stats-caja">Cargando...</div>
+      <div class="chart-sub" onclick="toggleChart('chart-caja', this)"><span class="arrow">▼</span>Ciclos de limpieza por día (total)</div>
+      <canvas id="chart-caja"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = { pirata: '#e74c3c', robin: '#3498db' };
+    const charts = {};
+
+    // Active view: start/end are Date objects, or both null for "toda la historia".
+    const state = { mode: '90', start: null, end: null };
+
+    // ── Date helpers (local midnight, no timezone drift) ───────────────────────
+    function isoDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    function parseISO(s) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    function addDays(d, n) {
+      const r = new Date(d);
+      r.setDate(r.getDate() + n);
+      return r;
+    }
+    function daysBetween(a, b) {
+      return Math.round((b - a) / 86400000);
+    }
+
+    // ── Controls ───────────────────────────────────────────────────────────────
+    function onModeChange() {
+      const v = document.getElementById('days').value;
+      state.mode = v;
+      const custom = document.getElementById('custom-fields');
+      const arrows = document.getElementById('nav-arrows');
+
+      if (v === 'all') {
+        state.start = null;
+        state.end = null;
+        custom.hidden = true;
+        arrows.hidden = true;          // no paging over "all history"
+      } else if (v === 'custom') {
+        custom.hidden = false;
+        arrows.hidden = false;
+        const si = document.getElementById('start-date');
+        const ei = document.getElementById('end-date');
+        if (!si.value || !ei.value) {  // seed sensible defaults on first switch
+          const end = new Date();
+          const start = addDays(end, -30);
+          si.value = isoDate(start);
+          ei.value = isoDate(end);
+        }
+        state.start = parseISO(si.value);
+        state.end = parseISO(ei.value);
+      } else {
+        custom.hidden = true;
+        arrows.hidden = false;
+        const n = Number(v);
+        const end = new Date();
+        state.end = end;
+        state.start = addDays(end, -n);
+      }
+      render();
+    }
+
+    function onCustomDateChange() {
+      const si = document.getElementById('start-date').value;
+      const ei = document.getElementById('end-date').value;
+      if (!si || !ei) return;
+      let s = parseISO(si);
+      let e = parseISO(ei);
+      if (s > e) [s, e] = [e, s];      // tolerate reversed input
+      state.start = s;
+      state.end = e;
+      render();
+    }
+
+    // Move the window backward (-1) or forward (+1), keeping its width.
+    function shiftRange(dir) {
+      if (!state.start || !state.end) return;
+      const width = daysBetween(state.start, state.end) || 1;
+      state.start = addDays(state.start, dir * width);
+      state.end = addDays(state.end, dir * width);
+      if (state.mode === 'custom') {
+        document.getElementById('start-date').value = isoDate(state.start);
+        document.getElementById('end-date').value = isoDate(state.end);
+      }
+      render();
+    }
+
+    function updateRangeLabel() {
+      const el = document.getElementById('range-label');
+      el.textContent = (!state.start || !state.end)
+        ? 'Toda la historia'
+        : `${isoDate(state.start)} → ${isoDate(state.end)}`;
+    }
+
+    // ── Gap detection ─────────────────────────────────────────────────────────
+    // Inserts a null sentinel in gaps >= gapDays so Chart.js breaks the line.
+    function insertGapNulls(data, gapDays = 4) {
+      if (data.length < 2) return data;
+      const result = [data[0]];
+      for (let i = 1; i < data.length; i++) {
+        const prev = parseISO(data[i - 1].dia);
+        const curr = parseISO(data[i].dia);
+        const gap = daysBetween(prev, curr);
+        if (gap >= gapDays) {
+          const mid = addDays(prev, Math.floor(gap / 2));
+          result.push({ dia: isoDate(mid), peso: null, visitas: null });
+        }
+        result.push(data[i]);
+      }
+      return result;
+    }
+
+    // ── Data + charts ────────────────────────────────────────────────────────
+    async function fetchData(cat, start, end) {
+      let where = `cat = '${cat}'`;
+      if (start) where += ` AND date(timestamp) >= '${isoDate(start)}'`;
+      if (end)   where += ` AND date(timestamp) <= '${isoDate(end)}'`;
+      const sql = `
+        SELECT date(timestamp) AS dia,
+               round(avg(weight_kg), 2) AS peso,
+               count(*) AS visitas
+        FROM visits
+        WHERE ${where}
+        GROUP BY dia
+        ORDER BY dia
+      `.trim();
+      const url = `/weights.json?sql=${encodeURIComponent(sql)}&_shape=array`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    function formatStats(data) {
+      if (!data.length) return 'Sin datos';
+      const weights = data.map(r => r.peso);
+      const last = weights[weights.length - 1];
+      const min = Math.min(...weights).toFixed(2);
+      const max = Math.max(...weights).toFixed(2);
+      const avg = (weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(2);
+      const totalVisits = data.reduce((a, r) => a + r.visitas, 0);
+      const avgVisits = (totalVisits / data.length).toFixed(1);
+      return `Último: ${last} kg &nbsp;|&nbsp; Min: ${min} &nbsp;|&nbsp; Máx: ${max} `
+           + `&nbsp;|&nbsp; Media: ${avg} kg &nbsp;|&nbsp; Visitas: ${totalVisits} `
+           + `(${avgVisits}/día)`;
+    }
+
+    function destroyChart(key) {
+      if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+    }
+
+    async function buildChart(cat, start, end) {
+      const card = document.getElementById(`card-${cat}`);
+      const weightCanvas = document.getElementById(`chart-${cat}`);
+      const freqCanvas = document.getElementById(`freq-${cat}`);
+      const color = COLORS[cat];
+
+      destroyChart(`${cat}-weight`);
+      destroyChart(`${cat}-freq`);
+      // Reset any previous empty-state and collapse state so reloads recover cleanly.
+      card.querySelectorAll('.empty').forEach(e => e.remove());
+      card.querySelectorAll('.chart-sub').forEach(h => h.classList.remove('collapsed'));
+      weightCanvas.style.display = '';
+      freqCanvas.style.display = '';
+
+      let data;
+      try {
+        data = await fetchData(cat, start, end);
+      } catch (e) {
+        document.getElementById(`stats-${cat}`).innerHTML = 'Error al cargar datos';
+        return;
+      }
+
+      document.getElementById(`stats-${cat}`).innerHTML = formatStats(data);
+
+      if (!data.length) {
+        weightCanvas.style.display = 'none';
+        freqCanvas.style.display = 'none';
+        card.insertAdjacentHTML('beforeend', '<p class="empty">Sin datos para este periodo</p>');
+        return;
+      }
+
+      const expanded = insertGapNulls(data, 4);
+
+      const timeScaleX = {
+        type: 'time',
+        time: { unit: 'day', displayFormats: { day: 'dd MMM', month: 'MMM yyyy' }, tooltipFormat: 'dd/MM/yyyy' },
+        ticks: { maxTicksLimit: 8, font: { size: 11 } },
+      };
+
+      charts[`${cat}-weight`] = new Chart(weightCanvas, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'kg',
+            data: expanded.map(r => ({ x: r.dia, y: r.peso })),
+            borderColor: color,
+            backgroundColor: color + '18',
+            fill: true,
+            tension: 0.35,
+            spanGaps: false,
+            pointRadius: data.length > 60 ? 0 : 3,
+            pointHoverRadius: 5,
+          }]
+        },
+        options: {
+          responsive: true,
+          aspectRatio: 3,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => ctx.parsed.y === null ? 'Sin datos' : `${ctx.parsed.y} kg`
+              }
+            }
+          },
+          scales: {
+            x: timeScaleX,
+            y: {
+              title: { display: true, text: 'kg', font: { size: 11 } },
+              ticks: { font: { size: 11 } }
+            }
+          }
+        }
+      });
+
+      charts[`${cat}-freq`] = new Chart(freqCanvas, {
+        type: 'bar',
+        data: {
+          datasets: [{
+            label: 'visitas',
+            data: expanded.map(r => ({ x: r.dia, y: r.visitas })),
+            backgroundColor: color + '99',
+            borderColor: color,
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          aspectRatio: 4,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.parsed.y} visita(s)` } }
+          },
+          scales: {
+            x: { ...timeScaleX, offset: true },
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'visitas/día', font: { size: 11 } },
+              ticks: { precision: 0, font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    function toggleChart(id, header) {
+      const canvas = document.getElementById(id);
+      const collapsed = canvas.style.display === 'none';
+      canvas.style.display = collapsed ? '' : 'none';
+      header.classList.toggle('collapsed', !collapsed);
+    }
+
+    // ── Box: total clean-cycle usage per day + current robot state ────────────
+    async function sqlQuery(sql) {
+      const url = `/weights.json?sql=${encodeURIComponent(sql.trim())}&_shape=array`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    async function fetchBoxUsage(start, end) {
+      let where = '1=1';
+      if (start) where += ` AND day >= '${isoDate(start)}'`;
+      if (end)   where += ` AND day <= '${isoDate(end)}'`;
+      return sqlQuery(`SELECT day, cycles FROM box_usage WHERE ${where} ORDER BY day`);
+    }
+
+    function formatBoxStatus(rows, status) {
+      const parts = [];
+      if (rows.length) {
+        const total = rows.reduce((a, r) => a + r.cycles, 0);
+        const avg = (total / rows.length).toFixed(1);
+        parts.push(`Ciclos: ${total} (${avg}/día)`);
+      }
+      if (status) {
+        if (status.litter_level != null) parts.push(`Arena: ${Math.round(status.litter_level)}%`);
+        if (status.waste_drawer_level != null) parts.push(`Cajón: ${Math.round(status.waste_drawer_level)}%`);
+        if (status.is_online != null) parts.push(status.is_online ? 'En línea' : '⚠ Desconectado');
+      }
+      return parts.length ? parts.join(' &nbsp;|&nbsp; ') : 'Sin datos';
+    }
+
+    async function buildBoxChart(start, end) {
+      const card = document.getElementById('card-caja');
+      const canvas = document.getElementById('chart-caja');
+      destroyChart('caja');
+      card.querySelectorAll('.empty').forEach(e => e.remove());
+      card.querySelectorAll('.chart-sub').forEach(h => h.classList.remove('collapsed'));
+      canvas.style.display = '';
+
+      let rows, status = null;
+      try {
+        rows = await fetchBoxUsage(start, end);
+        const s = await sqlQuery(
+          'SELECT litter_level, waste_drawer_level, is_online FROM robot_snapshots ORDER BY id DESC LIMIT 1');
+        status = s[0] || null;
+      } catch (e) {
+        document.getElementById('stats-caja').innerHTML = 'Error al cargar datos';
+        return;
+      }
+
+      document.getElementById('stats-caja').innerHTML = formatBoxStatus(rows, status);
+
+      if (!rows.length) {
+        canvas.style.display = 'none';
+        card.insertAdjacentHTML('beforeend', '<p class="empty">Sin datos de uso para este periodo</p>');
+        return;
+      }
+
+      charts['caja'] = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          datasets: [{
+            label: 'ciclos',
+            data: rows.map(r => ({ x: r.day, y: r.cycles })),
+            backgroundColor: '#7f8c8d99',
+            borderColor: '#7f8c8d',
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          aspectRatio: 4,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.parsed.y} ciclo(s)` } }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              offset: true,
+              time: { unit: 'day', displayFormats: { day: 'dd MMM', month: 'MMM yyyy' }, tooltipFormat: 'dd/MM/yyyy' },
+              ticks: { maxTicksLimit: 8, font: { size: 11 } },
+            },
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'ciclos/día', font: { size: 11 } },
+              ticks: { precision: 0, font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    function render() {
+      updateRangeLabel();
+      buildChart('pirata', state.start, state.end);
+      buildChart('robin', state.start, state.end);
+      buildBoxChart(state.start, state.end);
+    }
+
+    onModeChange();  // initialise from the default-selected option
+  </script>
+</body>
+</html>

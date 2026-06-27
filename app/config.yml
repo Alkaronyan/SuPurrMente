@@ -1,0 +1,47 @@
+cats:
+  pirata:
+    seed_weight_kg: 6.6
+  robin:
+    seed_weight_kg: 4.4
+
+classifier:
+  moving_average_window_days: 14
+  min_confidence_kg: 0.5       # alert if threshold is within 0.5 kg of either mean
+
+health:
+  confidence_interval_sigma: 2.0
+  confidence_interval_window_days: 30
+  trend_days: 5                # N consecutive days to trigger trend alert
+  absence_hours: 24            # no-visit alert threshold
+  frequency_window_hours: 6    # rolling window for visit spike check
+  frequency_max_visits: 4      # max visits in window before spike alert
+
+alerts:
+  cooldown_hours: 24           # don't re-send the same alert (cat+kind) within this window
+
+migration:
+  max_skip_rate: 0.05          # if more rows than this fail to parse, don't archive the file
+  dedup_tolerance_seconds: 120 # skip a CSV row within this many seconds of an existing same-cat visit (CSV↔API overlap)
+
+api_health:
+  # A cat's median reading this many × off its seed weight signals a unit/format
+  # change (a regression to pounds is ≈ ×2.2 for both cats). Per-cat ratio, not an
+  # absolute band, so it also catches the lighter cat.
+  max_weight_ratio: 1.8
+  min_weight_ratio: 0.55
+
+robot_health:
+  litter_low_pct: 10           # alert when litter_level at/below this %
+  drawer_full_pct: 90          # alert when waste_drawer_level at/above this %
+
+schedule:
+  cron: "0 */6 * * *"         # every 6h (00/06/12/18 UTC) — 4×/day so weight-loss alerts arrive in time
+
+storage:
+  sqlite_path: "/data/weights.db"
+  csv_path: "/data/weights.csv"
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  # from_address and to_addresses are read from FROM_EMAIL and TO_EMAILS env vars

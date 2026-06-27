@@ -1,114 +1,118 @@
 # Arquitectura — SuPurrMente
 
-Estado real del sistema (V1). Para el *porqué* de las decisiones, ver
+Estado real del sistema. Para el *porqué* de las decisiones, ver
 [CONTEXT.md](CONTEXT.md) y los [logs de sesión](sessions/).
 
-## Stack
+## Un contenedor, tres procesos, tres usuarios
 
-| Componente | Tecnología |
-|---|---|
-| Fuente de datos | `pylitterbot` (API no oficial de Whisker, LR4) |
-| Lenguaje | Python 3.11 |
-| Almacenamiento primario | SQLite (`/data/weights.db`) |
-| Backup | CSV (`/data/weights.csv`), mismo volumen |
-| Visualización | Datasette + Chart.js (puerto 8001) |
-| Notificaciones | Gmail SMTP (App Password) |
-| Programación | cron dentro del contenedor (cada 6h) |
-| Despliegue | Docker Compose en Raspberry Pi 4; datos en NAS Synology vía NFS |
+Todo corre en **un solo contenedor** (`supurrmente`). Dentro, `supervisord` (PID
+gestionado por `tini`) lanza tres procesos, **cada uno con su usuario de sistema**:
 
-La Synology DS214+ (ARMv7 32-bit) es **solo servidor de ficheros** (NFS). Todo el
-cómputo corre en la Raspi.
+| Proceso | Usuario | Escucha | Cometido |
+|---|---|---|---|
+| `oauth2-proxy` | `oauth` | **0.0.0.0:4180** (único puerto publicado) | Login Google + reparto por ruta |
+| `datasette` | `datasette` | `127.0.0.1:8081` | Dashboard + explorador de la BD |
+| `tracker` (uvicorn) | `tracker` | `127.0.0.1:8082` | Formulario `/whisker-login` + scheduler |
 
-## Flujo de datos (cada ciclo de cron)
+NPM (en la Pi) termina el SSL y manda **todo** a `:4180`. oauth2-proxy es la única
+puerta: reparte por ruta y decide qué es público y qué exige login.
 
 ```
-fetcher → [api_contract + version log] → classifier (validación) →
+NPM (SSL, supurrmente.gonzalez.team) ── todo ──▶ oauth2-proxy :4180
+        público (sin login):  /  ·  /static  ·  /favicon.ico  ·  /weights/*_daily.json + robot_status.json
+        login @gonzalez.team:  /whisker-login (→tracker)  ·  /weights, SQL, /-/ (→datasette)
+```
+
+## Aislamiento de credenciales (la razón de los tres usuarios)
+
+Los secretos se reparten en ficheros **600, cada uno propiedad del proceso que lo
+usa** (el entrypoint los extrae del `.env` montado; **no** se inyectan como entorno
+global). `/run/secrets` es `711` (atravesable, no listable).
+
+- `oauth` (el único de cara a internet) solo lee `oauth.env` (Google client/secret,
+  cookie). **No puede leer** los secretos del tracker (Linux deniega `/proc` y ficheros
+  600 de otro UID). No tiene acceso a `/data`.
+- `tracker` lee `tracker.env` (Gmail) y posee el **token de Whisker** (`/data/whisker_token.json`,
+  600). Un oauth2-proxy comprometido **no llega** a Gmail ni al token.
+- `datasette` no tiene secretos; lee la BD por el grupo `data` (la BD es 640 grupo
+  `data`; el token, 600, queda fuera de su alcance).
+
+Verificado: como `oauth`, `cat /run/secrets/tracker.env` → *Permission denied*.
+
+## Autenticación con Whisker: por token, sin contraseña
+
+La contraseña de Whisker **no se guarda en ningún sitio**. Flujo:
+
+1. Sin token válido, el ciclo lanza `WhiskerAuthRequired` → email (cooldown 24h) con el
+   enlace a **`/whisker-login`**.
+2. Ese formulario está tras oauth2-proxy → solo entra una cuenta `@gonzalez.team`.
+   Pides usuario+contraseña, `pylitterbot` hace login **una vez**, se extrae el token
+   y se guarda (600). El password se usa y se descarta (no se loguea).
+3. A partir de ahí, el fetcher usa el **token** (`Account(token=…, token_update_callback=…)`).
+4. Un job refresca el token al pasar la **media vida** del access token (JWT `exp`),
+   persistiendo el rotado. El token es **revocable** (cambiar la contraseña en Whisker
+   lo invalida) y acotado a esta app.
+
+Módulo: `whisker_auth.py`. Formulario + scheduler: `webapp.py`.
+
+## Flujo de datos (cada ciclo del scheduler)
+
+```
+fetcher(token) → [api_contract + version log] → classifier (validación) →
 SQLiteStore + CsvStore → HealthChecker + robot_health → EmailSender
 ```
 
-1. **fetcher** lee de `account.pets[*].weight_history` (peso por gato, **en libras**
-   → kg), convierte a hora local Madrid, y de paso recoge `get_insight` (ciclos/día)
-   y estado del robot (arena, cajón, online). Valida el contrato de la API.
-2. **classifier** ya no clasifica datos en vivo (la API da el gato); solo valida y
-   actualiza la media móvil. Sigue clasificando de verdad en la migración histórica.
-3. **storage** escribe a SQLite (primario) y CSV (backup), ambos dedup por timestamp.
-4. **alertas** evalúa salud por gato + estado del robot, con cooldown de 24h.
+El **scheduler** (APScheduler, dentro de `webapp.py`) sustituye al cron: ciclo de datos
+cada 6h + refresco de token. La idempotencia se mantiene (mismas garantías: `INSERT OR
+IGNORE`, dedup CSV, cooldown de alertas).
 
 ## Módulos (`app/src/`)
 
 | Módulo | Rol |
 |---|---|
-| `main.py` | Orquesta el pipeline en cada tick |
-| `fetcher.py` | API → `FetchResult` (visitas + issues de contrato + versiones + datos del robot) |
-| `api_contract.py` | Valida que la API sigue dando los datos esperados (sin importar pylitterbot, testeable) |
+| `webapp.py` | uvicorn: formulario `/whisker-login` + APScheduler (fetch 6h, refresco token) |
+| `whisker_auth.py` | Token de Whisker: guardar/cargar (600), login, refresco a media vida |
+| `main.py` | `run_pipeline`: orquesta un ciclo; si no hay token, email con el enlace |
+| `fetcher.py` | API → `FetchResult` (visitas + contrato + versiones + datos del robot) |
+| `api_contract.py` | Valida que la API sigue dando lo esperado |
 | `classifier.py` | Umbral dinámico; `classify_known` valida el gato de la API |
 | `timeutils.py` | Única fuente de verdad de zona horaria (Europe/Madrid) |
-| `storage/sqlite_store.py` | Primario; tablas `visits`, `sent_alerts`, `api_meta`, `box_usage`, `robot_snapshots` |
-| `storage/csv_store.py` | Backup en NAS, append + dedup |
-| `alerts/health.py` | Anomalías de peso, tendencia, ausencia, pico de visitas (por gato) |
-| `alerts/robot_health.py` | Arena baja, cajón lleno, robot offline (cat='caja') |
-| `alerts/email_sender.py` | Agrupa las alertas de un ciclo en un email |
+| `storage/sqlite_store.py` | Primario; `visits`, `sent_alerts`, `api_meta`, `box_usage`, `robot_snapshots` |
+| `storage/csv_store.py` | Backup en NAS, versionado por API |
+| `alerts/*` | Salud por gato, estado del robot, email |
 | `migrate.py` | Una vez: ingiere `deprecated/*.csv` → SQLite + CSV |
+| `ensure_db.py` | Crea el esquema SQLite al arrancar (Datasette no levanta sin BD) |
+| `plugins/homepage.py` | Sirve el dashboard en `/` y el favicon |
+| `plugins/logout.py` | Botón "Cerrar sesión" en el explorador (→ `/oauth2/sign_out`) |
 
-## Datos almacenados (SQLite)
+## El límite público/privado vive en oauth2-proxy
 
-- `visits` — lecturas de peso por gato (cada lectura = una visita). UNIQUE(timestamp).
-- `sent_alerts` — huellas de alertas enviadas (dedup por cooldown).
-- `api_meta` — una fila por *cambio* de firmware/versión de librería.
-- `box_usage` — ciclos de limpieza por día (total del robot); se acumula con el tiempo.
-- `robot_snapshots` — nivel de arena/cajón + estado online por ciclo.
-
-**Zona horaria:** todo se guarda y muestra en hora local Madrid. La API (UTC) se
-convierte; el CSV ya es local. Detalle en `timeutils.py`.
+Como hay **una sola Datasette de acceso completo**, el candado lo pone el proxy
+(`oauth2-proxy.cfg`, `skip_auth_routes`): allow-list estricta de rutas públicas; todo
+lo demás exige login. `tests/test_oauth_routes.py` verifica que no se afloje. (Se
+acepta perder la "doble red" del `allow_sql:false` — la BD cruda no es sensible aquí;
+los secretos sí, y esos los protege el aislamiento por usuario.)
 
 ## Backup
 
-El "backup" es el CSV (`/data/weights.csv`), que vive en el **mismo volumen** que la
-BD. En producción `/data` es el **montaje NFS → Synology NAS**
-(`/mnt/nas/cat-weights:/data`); no hay sincronización aparte ni OneDrive — es un
-volumen montado, así que cada escritura va directa al NAS. (En la Raspi requiere el
-montaje NFS, que `setup.sh` comprueba.)
-
-El CSV es **auto-descriptivo y versionado por API**: cada fichero empieza con
-cabeceras `# api_version: ...` / `# created: ...`. Cuando cambia la versión de la API
-de Whisker, `csv_store` archiva el fichero activo y abre uno nuevo, de modo que cada
-fichero contiene una sola era de API. Así, si Whisker vuelve a cambiar el formato del
-volcado (ya pasó), el cambio de parser/formato queda contenido en un fichero nuevo en
-vez de mezclar esquemas — y el email de alerta de cambio de API es la señal para ir a
-inspeccionar el nuevo formato y adaptar el parser.
-
-## Clasificador
-
-Peso estimado de cada gato = media móvil de 14 días de sus muestras. Umbral = punto
-medio entre ambas medias, recalculado en cada visita. Semillas: Pirata 6.6 / Robin
-4.4 kg. En datos en vivo la API da el gato, así que el clasificador solo **valida**
-(avisa si el peso contradice al gato que dice la API). En la migración histórica
-(sin gato) sí clasifica.
-
-## Resiliencia ante cambios de la API
-
-La API no oficial ya cambió una vez. En cada ciclo se valida el contrato y se
-registra la versión del firmware/librería; cualquier desviación dispara un email.
-Ver `api_contract.py` y la tabla `api_meta`.
+CSV (`/data/weights.csv`) en el mismo volumen que la BD. En producción `/data` es el
+montaje **NFS → Synology NAS**. Auto-descriptivo y versionado por API (cabecera
+`# api_version:`, rota al cambiar la versión de Whisker). Ver `csv_store.py`.
 
 ## Configuración
 
-`app/config.yml` controla todos los parámetros: semillas, ventana de media móvil,
-umbrales de salud (±2σ/30d, tendencia 5d, ausencia 24h, pico 4 visitas/6h), cron
-(`0 */6 * * *`), cooldown de alertas (24h), tolerancias de migración, rangos
-plausibles de la API, umbrales de arena/cajón. Los emails se leen de `FROM_EMAIL`
-/ `TO_EMAILS` en `.env`, **no** de `config.yml`.
+`app/config.yml`: semillas, ventanas de salud, `schedule.fetch_cron` (6h) y
+`refresh_fraction` (0.5), `whisker.token_path` / `login_url`, rutas de almacenamiento.
+Los emails y secretos se leen del `.env` (repartido en ficheros 600), **no** de `config.yml`.
 
-## Formato de los CSV históricos (migración)
+## Despliegue
 
-Exports de Whisker, columnas `Actividad, Marca de tiempo, Valor`. Solo filas
-`"Peso de la mascota registrado"`. `migrate.py` autodetecta 4 formatos de fecha
-(inglés 12h, español 12h con `a. m.`/`p. m.` y `\xa0`, europeo 24h, y `, a las`),
-coma o punto decimal, y saca el año del nombre del fichero. Dedup difuso ±120s
-contra lo ya almacenado (solape CSV↔API).
+Imagen multi-arch (amd64 dev / arm64 Pi); el binario de oauth2-proxy se copia de su
+imagen oficial. `setup.sh` descifra `.env.age`, comprueba el NFS, construye y arranca.
+**NPM: un único forward del dominio → `<pi>:4180`** (sin custom locations).
 
 ## Fuera de alcance
 
-Home Assistant, Grafana (Datasette sirve el dashboard), despliegue cloud, correr
-Docker en la Synology, push en tiempo real (existe `robot.subscribe()` pero no
-compensa frente al polling cada 6h).
+Home Assistant, Grafana, despliegue cloud, push en tiempo real (`robot.subscribe()`
+existe pero el polling 6h basta), y la atomización en varios contenedores (uso personal:
+se prioriza un contenedor con aislamiento por usuario sobre la separación por contenedor).

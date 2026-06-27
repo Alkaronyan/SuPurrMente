@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SuPurrMente</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <style>
@@ -19,6 +20,38 @@
       max-width: 960px;
       margin: 0 auto 1.5rem;
     }
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    /* Botón estándar "Sign in with Google" (tema claro, guía de marca de Google). */
+    .gsi-btn {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      height: 40px;
+      padding: 0 12px;
+      background: #fff;
+      border: 1px solid #747775;
+      border-radius: 4px;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.25px;
+      color: #1f1f1f;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .gsi-btn:hover {
+      background: #f7f8f8;
+      box-shadow: 0 1px 2px rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15);
+    }
+    .gsi-btn:active { background: #f1f3f4; }
+    .gsi-btn svg { display: block; }
     h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
     .subtitle { margin: 0; color: #777; font-size: 0.9rem; }
     .range-selector {
@@ -120,8 +153,23 @@
 </head>
 <body>
   <header>
-    <h1>SuPurrMente</h1>
-    <p class="subtitle">Evolución del peso — Pirata &amp; Robin</p>
+    <div class="header-top">
+      <div>
+        <h1>SuPurrMente</h1>
+        <p class="subtitle">Evolución del peso — Pirata &amp; Robin</p>
+      </div>
+      <!-- Botón estándar de Google. Lleva al explorador (/weights), que oauth2-proxy
+           protege: redirige directo a Google; tras login @gonzalez.team → explorador. -->
+      <a class="gsi-btn" href="/weights" title="Acceder a la base de datos completa">
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.859-3.048.859-2.344 0-4.328-1.583-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.709A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.709V4.959H.957A8.997 8.997 0 0 0 0 9c0 1.452.348 2.827.957 4.041l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.346l2.582-2.581C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.959L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+        </svg>
+        <span>Iniciar sesión con Google</span>
+      </a>
+    </div>
     <div class="range-selector">
       <label for="days">Mostrar:</label>
       <select id="days" onchange="onModeChange()">
@@ -289,23 +337,22 @@
     }
 
     // ── Data + charts ────────────────────────────────────────────────────────
-    async function fetchData(cat, start, end) {
-      let where = `cat = '${cat}'`;
-      if (start) where += ` AND date(timestamp) >= '${isoDate(start)}'`;
-      if (end)   where += ` AND date(timestamp) <= '${isoDate(end)}'`;
-      const sql = `
-        SELECT date(timestamp) AS dia,
-               round(avg(weight_kg), 2) AS peso,
-               count(*) AS visitas
-        FROM visits
-        WHERE ${where}
-        GROUP BY dia
-        ORDER BY dia
-      `.trim();
-      const url = `/weights.json?sql=${encodeURIComponent(sql)}&_shape=array`;
-      const resp = await fetch(url);
+    // Los datos vienen de canned queries de Datasette, NO de SQL arbitrario: la
+    // instancia pública tiene el SQL libre desactivado. start/end van vacíos para
+    // "toda la historia" (la query los trata como sin filtro).
+    async function cannedQuery(name, params = {}) {
+      const qs = new URLSearchParams({ ...params, _shape: 'array' });
+      const resp = await fetch(`/weights/${name}.json?${qs}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return resp.json();
+    }
+
+    async function fetchData(cat, start, end) {
+      return cannedQuery('cat_daily', {
+        cat,
+        start: start ? isoDate(start) : '',
+        end: end ? isoDate(end) : '',
+      });
     }
 
     function formatStats(data) {
@@ -441,18 +488,11 @@
     }
 
     // ── Box: total clean-cycle usage per day + current robot state ────────────
-    async function sqlQuery(sql) {
-      const url = `/weights.json?sql=${encodeURIComponent(sql.trim())}&_shape=array`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    }
-
     async function fetchBoxUsage(start, end) {
-      let where = '1=1';
-      if (start) where += ` AND day >= '${isoDate(start)}'`;
-      if (end)   where += ` AND day <= '${isoDate(end)}'`;
-      return sqlQuery(`SELECT day, cycles FROM box_usage WHERE ${where} ORDER BY day`);
+      return cannedQuery('box_daily', {
+        start: start ? isoDate(start) : '',
+        end: end ? isoDate(end) : '',
+      });
     }
 
     function formatBoxStatus(rows, status) {
@@ -481,8 +521,7 @@
       let rows, status = null;
       try {
         rows = await fetchBoxUsage(start, end);
-        const s = await sqlQuery(
-          'SELECT litter_level, waste_drawer_level, is_online FROM robot_snapshots ORDER BY id DESC LIMIT 1');
+        const s = await cannedQuery('robot_status');
         status = s[0] || null;
       } catch (e) {
         document.getElementById('stats-caja').innerHTML = 'Error al cargar datos';

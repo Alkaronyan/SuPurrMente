@@ -1,5 +1,11 @@
-title: SuPurrMente
-description: Peso de Pirata y Robin — histórico desde la Litter-Robot 4
+# Metadata de la instancia PRIVADA de Datasette (ruta /db/, tras login @gonzalez.team).
+#
+# Acceso COMPLETO: explorador de tablas + SQL arbitrario. No lleva bloqueos de
+# permisos porque el control de acceso lo hace oauth2-proxy delante (solo deja
+# pasar a cuentas Google de gonzalez.team). Nunca se publica su puerto: solo es
+# alcanzable a través del proxy.
+title: SuPurrMente — explorador
+description: Peso de Pirata y Robin — Litter-Robot 4 (acceso completo)
 
 databases:
   weights:
@@ -7,33 +13,36 @@ databases:
       visits:
         sort_desc: timestamp
     queries:
-      pirata_daily:
-        title: Pirata — promedio diario
-        sql: |
-          SELECT
-            date(timestamp) AS dia,
-            round(avg(weight_kg), 2) AS peso,
-            count(*) AS visitas
+      cat_daily:
+        title: Peso y visitas diarias por gato
+        sql: |-
+          SELECT date(timestamp) AS dia,
+                 round(avg(weight_kg), 2) AS peso,
+                 count(*) AS visitas
           FROM visits
-          WHERE cat = 'pirata'
-            AND timestamp >= date('now', '-90 days')
+          WHERE cat = :cat
+            AND (:start = '' OR date(timestamp) >= :start)
+            AND (:end = '' OR date(timestamp) <= :end)
           GROUP BY dia
           ORDER BY dia
-      robin_daily:
-        title: Robin — promedio diario
-        sql: |
-          SELECT
-            date(timestamp) AS dia,
-            round(avg(weight_kg), 2) AS peso,
-            count(*) AS visitas
-          FROM visits
-          WHERE cat = 'robin'
-            AND timestamp >= date('now', '-90 days')
-          GROUP BY dia
-          ORDER BY dia
+      box_daily:
+        title: Ciclos de limpieza por día
+        sql: |-
+          SELECT day, cycles
+          FROM box_usage
+          WHERE (:start = '' OR day >= :start)
+            AND (:end = '' OR day <= :end)
+          ORDER BY day
+      robot_status:
+        title: Estado actual del robot
+        sql: |-
+          SELECT litter_level, waste_drawer_level, is_online
+          FROM robot_snapshots
+          ORDER BY id DESC
+          LIMIT 1
       resumen_reciente:
         title: Últimas 48h
-        sql: |
+        sql: |-
           SELECT timestamp, cat, weight_kg, confidence
           FROM visits
           WHERE timestamp >= datetime('now', '-48 hours')

@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 import api_contract
+import whisker_auth
 from fetcher import fetch_new_visits
 from classifier import Classifier
 from storage.sqlite_store import SQLiteStore
@@ -50,7 +51,21 @@ async def run_pipeline(config: dict) -> None:
     store = SQLiteStore(config)
     csv = CsvStore(config)
 
-    result = await fetch_new_visits(config, last_timestamp=store.last_timestamp())
+    try:
+        result = await fetch_new_visits(config, last_timestamp=store.last_timestamp())
+    except whisker_auth.WhiskerAuthRequired as e:
+        # Sin token válido no podemos recoger datos: avisa (1×/día) con el enlace al
+        # formulario de login y termina el ciclo limpiamente.
+        log.warning("Sesión de Whisker no disponible: %s", e)
+        login_url = config.get("whisker", {}).get("login_url", "")
+        alert = Alert(
+            cat="sistema", severity="critical", kind="whisker_login",
+            message=("No hay sesión activa con Whisker (token ausente o caducado). "
+                     "La recogida de datos está parada. Inicia sesión aquí para "
+                     f"reactivarla: {login_url}"),
+        )
+        _send_with_cooldown(config, store, [alert])
+        return
 
     # ── API health: contract + version registry ───────────────────────────────
     # These must be evaluated even when there are 0 new visits — a broken API or a

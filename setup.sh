@@ -74,7 +74,7 @@ DB_PATH="$NFS_MOUNT/weights.db"
 if mountpoint -q "$NFS_MOUNT" 2>/dev/null && [ ! -f "$DB_PATH" ]; then
     echo ""
     echo "Base de datos no encontrada. Ejecutando migración de CSVs históricos..."
-    docker compose run --rm tracker python src/migrate.py
+    docker compose run --rm supurrmente python src/migrate.py
     echo "${OK} Migración completada"
 elif [ -f "$DB_PATH" ]; then
     echo "${OK} Base de datos existente detectada — se omite la migración"
@@ -90,7 +90,11 @@ echo "${OK} Servicios iniciados"
 LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 echo ""
 echo -e "${BOLD}Sistema en marcha${RESET}"
-echo "  Dashboard : http://${LOCAL_IP}:8001/static/dashboard.html"
-echo "  Datos     : http://${LOCAL_IP}:8001/weights/visits"
-echo "  Logs      : docker compose logs -f tracker"
-echo "  Estado    : docker compose ps"
+echo "  Dashboard          : https://supurrmente.gonzalez.team/            (público)"
+echo "  Explorador / login : https://supurrmente.gonzalez.team/weights     (login Google @gonzalez.team)"
+echo "  Conectar Whisker   : https://supurrmente.gonzalez.team/whisker-login"
+echo "  Procesos           : docker compose exec supurrmente supervisorctl status"
+echo "  Logs               : docker compose logs -f supurrmente"
+echo ""
+echo "  NPM: un único forward del dominio → ${LOCAL_IP}:4180  (sin custom locations)."
+echo "       oauth2-proxy reparte por ruta y decide qué es público."

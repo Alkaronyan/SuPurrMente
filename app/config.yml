@@ -35,7 +35,14 @@ robot_health:
   drawer_full_pct: 90          # alert when waste_drawer_level at/above this %
 
 schedule:
-  cron: "0 */6 * * *"         # every 6h (00/06/12/18 UTC) — 4×/day so weight-loss alerts arrive in time
+  fetch_cron: "0 */6 * * *"    # ciclo de datos: cada 6h (4×/día) para que las alertas lleguen a tiempo
+  refresh_fraction: 0.5        # refresca el token de Whisker al pasar esta fracción de la vida del access token
+
+whisker:
+  # Autenticación por TOKEN (no por contraseña). El password solo se usa una vez en
+  # el formulario web; aquí se guarda el token revocable resultante.
+  token_path: "/data/whisker_token.json"
+  login_url: "https://supurrmente.gonzalez.team/whisker-login"
 
 storage:
   sqlite_path: "/data/weights.db"

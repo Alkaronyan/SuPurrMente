@@ -1,24 +1,18 @@
 services:
-  tracker:
+  # Un único contenedor con tres procesos (supervisord, usuarios separados):
+  #   - oauth2-proxy (usuario 'oauth')      → único puerto publicado (4180)
+  #   - datasette    (usuario 'datasette')  → 127.0.0.1:8081 (solo vía proxy)
+  #   - tracker      (usuario 'tracker')    → 127.0.0.1:8082 (/whisker-login + scheduler)
+  #
+  # NPM apunta TODO a este 4180. El .env (descifrado) se monta como fichero: el
+  # entrypoint lo reparte en secretos 600 por usuario; NO se inyecta como env global
+  # (eso lo verían todos los procesos).
+  supurrmente:
     build: ./app
-    env_file: .env
     volumes:
       - /mnt/nas/cat-weights:/data
       - ./app/config.yml:/app/config.yml
-    restart: unless-stopped
-
-  datasette:
-    build: ./app
-    command: >
-      datasette /data/weights.db
-      --host 0.0.0.0
-      --port 8001
-      --metadata /app/datasette.yml
-      --static static:/app/static
-    volumes:
-      - /mnt/nas/cat-weights:/data
-      - ./app/datasette.yml:/app/datasette.yml
-      - ./app/static:/app/static
+      - ./.env:/app/.env:ro
     ports:
-      - "8001:8001"
+      - "4180:4180"
     restart: unless-stopped

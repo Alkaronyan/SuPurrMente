@@ -37,6 +37,14 @@ con **FeLV** en la API — vigilar el peso importa de verdad.
 - **InfluxDB → SQLite**: con ~4 visitas/día no se justificaba el time-series.
 - **El clasificador pasó de motor principal a validación**: la API resultó dar el
   gato directamente (cada `Pet` con su `weight_history`).
+- **4 contenedores → 1 contenedor** (uso personal): se prioriza el **aislamiento por
+  usuario** (un UID por proceso + secretos 600) sobre la separación por contenedor. El
+  proceso de cara a internet (oauth2-proxy) no puede leer las credenciales del tracker.
+- **Whisker: contraseña → token.** El password ya no se guarda en disco; un formulario
+  web (tras login Google) emite un **token revocable** que se refresca solo.
+- **cron → APScheduler** (dentro del proceso web del tracker), manteniendo la idempotencia.
+- **Acceso web con Google.** El dashboard es público; el explorador de la BD y la
+  configuración van tras oauth2-proxy restringido a `@gonzalez.team`.
 
 ## Fuera de alcance
 

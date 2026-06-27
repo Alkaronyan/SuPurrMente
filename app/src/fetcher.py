@@ -1,13 +1,11 @@
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from pylitterbot import Account
-
 import api_contract
 import timeutils
+import whisker_auth
 
 log = logging.getLogger(__name__)
 
@@ -56,14 +54,12 @@ async def fetch_new_visits(
     Weight data lives on the Pet objects (account.pets), in POUNDS. The cat is
     identified by Whisker. Returns a FetchResult carrying the new visits plus any
     contract issues and the device/library versions (so main.py can alert and log).
+
+    Auth is by stored token (no password). If there's no valid token, raises
+    ``whisker_auth.WhiskerAuthRequired`` so the caller can email the login link.
     """
-    account = Account()
+    account = await whisker_auth.connect_with_token(config, load_robots=True)
     try:
-        await account.connect(
-            username=os.environ["WHISKER_USERNAME"],
-            password=os.environ["WHISKER_PASSWORD"],
-            load_robots=True,
-        )
         await account.load_pets()
 
         known_cats = set(config["cats"].keys())

@@ -1,0 +1,4 @@
+# Los scripts de shell DEBEN tener saltos de línea LF: con CRLF, en Linux (la Pi y el
+# contenedor) fallan con "/bin/bash^M: bad interpreter".
+*.sh text eol=lf
+entrypoint.sh text eol=lf

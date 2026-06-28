@@ -7,9 +7,13 @@ passphrase de `age`. Lo único manual es infraestructura/datos y el login de Whi
 
 ## 0. Requisitos en la Pi (una vez)
 
+`setup.sh` **instala solo lo que falte** del host (`age`, `docker`, `docker compose`) vía
+apt — idempotente, y **nunca toca Python** (vive dentro del contenedor). Solo necesitas
+poder usar `sudo`. Si Docker se instala por primera vez, añade tu usuario al grupo y
+re-loguéate para no depender de `sudo` con docker:
+
 ```bash
-sudo apt update && sudo apt install -y age docker.io docker-compose-plugin
-sudo usermod -aG docker "$USER"   # re-loguea la sesión para que tome el grupo
+sudo usermod -aG docker "$USER"   # solo si Docker se instaló ahora; re-loguea la sesión
 ```
 
 ## 1. Clonar y arrancar

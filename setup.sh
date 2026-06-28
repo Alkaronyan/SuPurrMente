@@ -12,14 +12,60 @@ ERR="[ERROR]"
 echo -e "${BOLD}=== SuPurrMente — Setup ===${RESET}"
 echo ""
 
-# ── 1. Verificar/descifrar .env ──────────────────────────────────────────────
-if [ ! -f .env ]; then
-    if [ -f .env.age ]; then
-        if ! command -v age &>/dev/null; then
-            echo "${ERR} Se encontró .env.age pero 'age' no está instalado."
-            echo "      En Debian/Raspi: sudo apt install age"
+# ── 1. Dependencias del HOST (age + Docker) ──────────────────────────────────
+# SOLO dependencias de host. Python, pip y las librerías viven DENTRO del
+# contenedor; este script NUNCA instala Python en el host (nada de copias sueltas).
+# Idempotente: cada paquete se instala solo si su comando aún no existe.
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+APT_UPDATED=0
+
+apt_install() {
+    if ! command -v apt-get &>/dev/null; then
+        echo "${ERR} Sistema sin apt. Instala manualmente: $* — y reintenta."
+        exit 1
+    fi
+    if [ "$APT_UPDATED" -eq 0 ]; then
+        echo "      apt-get update..."
+        $SUDO apt-get update -qq
+        APT_UPDATED=1
+    fi
+    $SUDO apt-get install -y "$@"
+}
+
+ensure_cmd() {  # ensure_cmd <comando> <paquete-apt>
+    if command -v "$1" &>/dev/null; then
+        echo "${OK} $1 ya presente ($(command -v "$1"))"
+    else
+        echo "${WARN} $1 no encontrado — instalando '$2'..."
+        apt_install "$2"
+        if ! command -v "$1" &>/dev/null; then
+            echo "${ERR} '$1' sigue ausente tras instalar '$2'."
             exit 1
         fi
+        echo "${OK} $1 instalado"
+    fi
+}
+
+echo "Comprobando dependencias del host (no se toca Python)..."
+ensure_cmd age age
+ensure_cmd docker docker.io
+# 'docker compose' v2 es un plugin, no un binario suelto: se verifica aparte.
+if docker compose version &>/dev/null; then
+    echo "${OK} docker compose (v2) ya presente"
+else
+    echo "${WARN} 'docker compose' no disponible — instalando 'docker-compose-plugin'..."
+    apt_install docker-compose-plugin
+    if ! docker compose version &>/dev/null; then
+        echo "${ERR} 'docker compose' sigue sin funcionar; instálalo manualmente."
+        exit 1
+    fi
+    echo "${OK} docker compose instalado"
+fi
+
+# ── 2. Descifrar .env ────────────────────────────────────────────────────────
+if [ ! -f .env ]; then
+    if [ -f .env.age ]; then
         echo "Credenciales cifradas detectadas. Introduce la contraseña maestra:"
         age --decrypt .env.age > .env
         chmod 600 .env
@@ -36,17 +82,6 @@ else
     chmod 600 .env
     echo "${OK} Credenciales: .env existe con permisos 600"
 fi
-
-# ── 2. Verificar dependencias ────────────────────────────────────────────────
-if ! command -v docker &>/dev/null; then
-    echo -e "${ERR} Docker no está instalado. Instálalo primero."
-    exit 1
-fi
-if ! docker compose version &>/dev/null; then
-    echo -e "${ERR} Docker Compose (v2) no está disponible."
-    exit 1
-fi
-echo "${OK} Docker y Docker Compose disponibles"
 
 # ── 3. Verificar montaje NFS ─────────────────────────────────────────────────
 NFS_MOUNT="/mnt/nas/cat-weights"

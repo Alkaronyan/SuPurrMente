@@ -12,6 +12,18 @@ su usuario para aislar las credenciales). Whisker se autentica **por token** (un
 formulario web, sin guardar la contraseña). El dashboard es público; el explorador y la
 configuración van tras **login con Google `@gonzalez.team`**.
 
+## Desplegar (un solo paso)
+
+Desde donde quieras el despliegue (p.ej. `/opt/stacks`):
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh
+bash deploy.sh
+```
+
+Crea la carpeta con tu usuario, clona y lanza `setup.sh` (deps + descifra `.env` + build +
+arranque). Te pedirá `sudo` y la passphrase de age. Detalle en [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Estructura
 
 ```

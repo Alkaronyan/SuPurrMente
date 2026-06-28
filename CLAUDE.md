@@ -15,11 +15,11 @@ aprendizajes en [docs/sessions/](docs/sessions/).
 
 ## Estructura
 
-- `app/` — la aplicación: `src/`, `tests/`, `static/`, `Dockerfile`, `config.yml`,
-  `datasette.yml`, `requirements*.txt`, `scripts/` (diagnósticos de la API),
-  `deprecated/` (CSV históricos).
+- `app/` — la aplicación: `src/`, `tests/`, `static/`, `plugins/`, `Dockerfile`,
+  `config.yml`, `datasette.yml`, `requirements*.txt`, `deprecated/` (CSV históricos,
+  gitignored tras migrar).
 - `docs/` — documentación y logs de sesión.
-- `scripts/` — ops (`encrypt-env.sh`). Raíz: compose, Makefile, setup.sh, `.env*`.
+- `scripts/` — ops (`encrypt-env.sh`). Raíz: compose, Makefile, setup.sh, `.env.age`.
 
 ## Comandos
 
@@ -55,7 +55,9 @@ token de Whisker, manda el email de "inicia sesión" en vez de recoger datos).
 - **El gato lo da la API.** El peso vive en `account.pets[*].weight_history`, en
   **libras** (×0.453592), ya por gato. `get_activity_history()` NO trae pesos. El
   clasificador solo valida en vivo (`classify_known`); clasifica de verdad solo en
-  la migración histórica.
+  la migración histórica. **`crosscheck.py`** es una red secundaria: compara cada
+  lectura con la tendencia reciente (regresión + MAD) del gato que dice la API y
+  manda email si discrepa con claridad — pero **nunca reasigna**, la API manda.
 - **Resiliencia de API.** Cada ciclo valida el contrato (`api_contract.py`) y
   registra firmware/versión (`api_meta`); una desviación manda email crítico. Si
   cambias el fetcher, mantén estos chequeos.
@@ -96,8 +98,8 @@ El candado lo pone el **proxy**, no Datasette:
 
 Invariante: **`skip_auth_routes` es una allow-list estricta** — solo dashboard + canned
 queries. Si añades un dato al dashboard, añade su canned query Y su ruta en
-`oauth2-proxy.cfg`. `tests/test_oauth_routes.py` bloquea que se afloje. Diagnósticos de
-la API en `app/scripts/inspect_*.py`.
+`oauth2-proxy.cfg`. `tests/test_oauth_routes.py` bloquea que se afloje. Diagnóstico en
+vivo del token/conexión: `app/src/verify_token.py`.
 
 ## Datos / tablas SQLite
 

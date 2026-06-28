@@ -25,10 +25,11 @@ if [ ! -f .env ]; then
         chmod 600 .env
         echo "${OK} Credenciales descifradas y guardadas en .env (600)"
     else
-        cp .env.example .env
-        echo "${ERR} .env no encontrado. Se ha creado desde .env.example."
-        echo "      Rellena las credenciales y vuelve a ejecutar este script."
-        echo "      Luego cifra con: bash scripts/encrypt-env.sh"
+        echo "${ERR} No hay .env ni .env.age. Crea un .env con estas claves:"
+        echo "        GMAIL_APP_PASSWORD  FROM_EMAIL  TO_EMAILS"
+        echo "        OAUTH2_PROXY_CLIENT_ID  OAUTH2_PROXY_CLIENT_SECRET"
+        echo "        OAUTH2_PROXY_COOKIE_SECRET  OAUTH2_PROXY_REDIRECT_URL"
+        echo "      Luego cífralo con: bash scripts/encrypt-env.sh"
         exit 1
     fi
 else

@@ -19,6 +19,16 @@ health:
 alerts:
   cooldown_hours: 24           # don't re-send the same alert (cat+kind) within this window
 
+crosscheck:
+  # Medida secundaria: confirma cada lectura nueva contra la TENDENCIA reciente del gato
+  # que dice la API. Si encaja claramente mejor con el otro gato, avisa por correo (no
+  # reasigna: la API manda). Ver crosscheck.py.
+  enabled: true
+  window_days: 10              # tendencia desde los N días previos por gato
+  min_points: 3                # nº mínimo de lecturas claras para fiarse de la tendencia
+  margin_kg: 0.3               # solo avisa si la tendencia rival queda al menos esto más cerca (evita empates)
+  mad_k: 4.0                   # descarta del ajuste los outliers a >K·MAD de la mediana
+
 migration:
   max_skip_rate: 0.05          # if more rows than this fail to parse, don't archive the file
   dedup_tolerance_seconds: 120 # skip a CSV row within this many seconds of an existing same-cat visit (CSV↔API overlap)

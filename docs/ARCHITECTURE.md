@@ -58,7 +58,7 @@ Módulo: `whisker_auth.py`. Formulario + scheduler: `webapp.py`.
 ## Flujo de datos (cada ciclo del scheduler)
 
 ```
-fetcher(token) → [api_contract + version log] → classifier (validación) →
+fetcher(token) → [api_contract + version log] → classifier (validación) → crosscheck (tendencia) →
 SQLiteStore + CsvStore → HealthChecker + robot_health → EmailSender
 ```
 
@@ -76,6 +76,7 @@ IGNORE`, dedup CSV, cooldown de alertas).
 | `fetcher.py` | API → `FetchResult` (visitas + contrato + versiones + datos del robot) |
 | `api_contract.py` | Valida que la API sigue dando lo esperado |
 | `classifier.py` | Umbral dinámico; `classify_known` valida el gato de la API |
+| `crosscheck.py` | Robustez secundaria: regresión de la tendencia reciente por gato; si el peso no encaja con el gato que dice la API, manda un email (no reasigna — la API manda) |
 | `timeutils.py` | Única fuente de verdad de zona horaria (Europe/Madrid) |
 | `storage/sqlite_store.py` | Primario; `visits`, `sent_alerts`, `api_meta`, `box_usage`, `robot_snapshots` |
 | `storage/csv_store.py` | Backup en NAS, versionado por API |
@@ -101,8 +102,9 @@ montaje **NFS → Synology NAS**. Auto-descriptivo y versionado por API (cabecer
 
 ## Configuración
 
-`app/config.yml`: semillas, ventanas de salud, `schedule.fetch_cron` (6h) y
-`refresh_fraction` (0.5), `whisker.token_path` / `login_url`, rutas de almacenamiento.
+`app/config.yml`: semillas, ventanas de salud, `crosscheck` (ventana de tendencia,
+margen, MAD), `schedule.fetch_cron` (6h) y `refresh_fraction` (0.5),
+`whisker.token_path` / `login_url`, rutas de almacenamiento.
 Los emails y secretos se leen del `.env` (repartido en ficheros 600), **no** de `config.yml`.
 
 ## Despliegue

@@ -1,4 +1,5 @@
 .env
+.env.hint
 # .env.age es el .env cifrado con age — sí se commitea
 __pycache__/
 *.pyc

@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 import api_contract
+import crosscheck
 import whisker_auth
 from fetcher import fetch_new_visits
 from classifier import Classifier
@@ -101,11 +102,16 @@ async def run_pipeline(config: dict) -> None:
 
     # ── Store new readings ────────────────────────────────────────────────────
     visits = result.visits
+    crosscheck_alerts = []
     if visits:
         log.info("Fetched %d new visit(s)", len(visits))
         # The API already identifies the cat per reading; the classifier only validates.
         classifier = Classifier(config, history=store.load_history())
         classified = [classifier.classify_known(v) for v in visits]
+        # Secondary robustness: does each reading's weight match its API-assigned cat's
+        # recent trend? Run BEFORE writing so the trend uses only prior data. A clear
+        # mismatch (partial/double weighing or a dubious label) gets emailed.
+        crosscheck_alerts = crosscheck.check_assignments(config, store, visits)
         store.write(classified)
         # Tag the backup CSV with the API version so it rotates if Whisker changes it.
         api_version = None
@@ -118,7 +124,7 @@ async def run_pipeline(config: dict) -> None:
     # ── Health alerts (only meaningful with data present) ─────────────────────
     health_alerts = HealthChecker(config, store).check_all()
 
-    _send_with_cooldown(config, store, system_alerts + health_alerts)
+    _send_with_cooldown(config, store, system_alerts + crosscheck_alerts + health_alerts)
 
 
 def main() -> None:

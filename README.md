@@ -19,12 +19,12 @@ configuración van tras **login con Google `@gonzalez.team`**.
 ├── app/            # la aplicación (código, tests, Docker, config, static)
 │   ├── src/        # módulos Python
 │   ├── tests/      # suite (corre dentro del contenedor)
-│   ├── static/     # dashboard.html
-│   ├── scripts/    # diagnósticos de la API (inspect_*.py)
-│   └── deprecated/ # CSV históricos para migrar
+│   ├── static/     # dashboard.html + dashboard.js (markup/CSS y lógica separados)
+│   ├── plugins/    # plugins de Datasette (homepage, logout)
+│   └── deprecated/ # CSV históricos para migrar (local, gitignored)
 ├── docs/           # arquitectura, contexto y logs de sesión
 ├── scripts/        # ops (encrypt-env.sh)
-├── docker-compose.yml / .override.yml
+├── docker-compose.yml      # + docker-compose.override.yml (dev, local)
 ├── Makefile        # targets estándar (todo en contenedor)
 └── setup.sh        # despliegue en la Raspberry Pi
 ```
@@ -32,8 +32,8 @@ configuración van tras **login con Google `@gonzalez.team`**.
 ## Arranque rápido (dev)
 
 ```bash
-# Credenciales (o descifra .env.age con: age --decrypt .env.age > .env)
-cp .env.example .env   # rellena GMAIL_APP_PASSWORD, FROM/TO_EMAILS, OAUTH2_PROXY_*
+# Credenciales: descifra el .env cifrado (necesita 'age')
+age --decrypt .env.age > .env && chmod 600 .env
 
 make build             # construir la imagen
 make migrate           # migrar CSV históricos (app/deprecated/*.csv) — una vez
@@ -63,6 +63,7 @@ oauth2-proxy reparte por ruta). Detalle en
 
 ## Documentación
 
+- [docs/DEPLOY.md](docs/DEPLOY.md) — despliegue paso a paso en la Raspberry Pi
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — arquitectura y módulos
 - [docs/CONTEXT.md](docs/CONTEXT.md) — motivación y decisiones
 - [docs/sessions/](docs/sessions/) — logs de cada sesión de desarrollo

@@ -20,7 +20,9 @@ con **FeLV** en la API — vigilar el peso importa de verdad.
 - **Umbral dinámico, no fijo.** Un umbral fijo se degrada cuando los gatos cambian
   de peso; la media móvil se adapta sola. (En vivo la API ya da el gato, así que el
   clasificador quedó como validación — ver [logs](sessions/).)
-- **Nunca clasificar mal en silencio.** Si la confianza cae, se avisa.
+- **Nunca clasificar mal en silencio.** Si la confianza cae, se avisa. Como red
+  secundaria, `crosscheck.py` contrasta cada lectura con la tendencia reciente del
+  gato que da la API y avisa por email si discrepan (sin reasignar: la API manda).
 - **Alertas como feature central**, no añadido: son señales clínicas.
 - **Email only** (Gmail SMTP). Sin Home Assistant, Telegram ni push: simplicidad y
   cero dependencias externas.

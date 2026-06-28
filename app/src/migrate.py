@@ -140,13 +140,17 @@ def main() -> None:
     config = load_config()
 
     deprecated = Path("deprecated")
-    done = deprecated / "done"
-    done.mkdir(exist_ok=True)
+    if not deprecated.is_dir():
+        log.info("No existe deprecated/ — nada que migrar (datos vienen de la API / restore)")
+        return
 
     csv_files = sorted(deprecated.glob("*.csv"))
     if not csv_files:
         log.info("No CSV files found in deprecated/ — nothing to migrate")
         return
+
+    done = deprecated / "done"
+    done.mkdir(parents=True, exist_ok=True)
 
     # A file is only archived if it parsed cleanly. If more than this fraction of its
     # weight rows fail, we treat it as failed (likely an unhandled format) and leave it

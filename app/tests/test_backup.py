@@ -95,13 +95,23 @@ def test_run_backup_disabled_returns_skipped():
     assert backup.run_backup({"backup": {"enabled": False}}) == {"skipped": True}
 
 
-def test_restore_skips_when_db_exists(tmp_path):
-    # Idempotencia: si ya hay BD local, NO se restaura (la local manda).
+def test_restore_skips_when_db_has_data(tmp_path):
+    # Idempotencia: si la BD local ya tiene datos, NO se restaura (la local manda).
     db = tmp_path / "weights.db"
-    db.write_bytes(b"x")
+    make_db(str(db), [T1, T2])
     cfg = {"storage": {"sqlite_path": str(db), "csv_path": str(tmp_path / "w.csv")},
            "backup": {"enabled": True}}
     assert "skipped" in backup.restore_if_missing(cfg)
+
+
+def test_restore_proceeds_when_db_empty(tmp_path, monkeypatch):
+    # Una BD vacía (0 visitas, como la que crea ensure_db) NO debe bloquear la restauración:
+    # con backup deshabilitado, el guard de emptiness se pasa y se llega al de 'enabled'.
+    db = tmp_path / "weights.db"
+    make_db(str(db), [])  # tabla visits pero sin filas
+    cfg = {"storage": {"sqlite_path": str(db), "csv_path": str(tmp_path / "w.csv")},
+           "backup": {"enabled": False}}
+    assert backup.restore_if_missing(cfg) == {"skipped": "backup deshabilitado"}
 
 
 def test_restore_skips_when_backup_disabled(tmp_path):

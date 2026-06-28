@@ -62,6 +62,17 @@ def _has_table(conn: sqlite3.Connection, name: str, schema: str = "main") -> boo
     ).fetchone() is not None
 
 
+def _row_count(path: str, table: str) -> int:
+    """Filas de `table` (0 si la BD falta, no es BD, o no tiene la tabla)."""
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as c:
+            if not _has_table(c, table):
+                return 0
+            return c.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+    except sqlite3.Error:
+        return 0
+
+
 def _integrity_ok(path: str) -> bool:
     try:
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as c:
@@ -269,8 +280,9 @@ def restore_if_missing(config: dict) -> dict:
     bcfg = config.get("backup", {})
     db = config["storage"]["sqlite_path"]
     csv = config["storage"]["csv_path"]
-    if os.path.exists(db):
-        return {"skipped": "ya existe la BD local (manda la local)"}
+    # Restaura si la BD falta O está vacía (ensure_db crea una vacía en el primer arranque).
+    if _row_count(db, "visits") > 0:
+        return {"skipped": "la BD local ya tiene datos (manda la local)"}
     if not bcfg.get("enabled", False):
         return {"skipped": "backup deshabilitado"}
     if not _fetch(bcfg, "weights.db", db):

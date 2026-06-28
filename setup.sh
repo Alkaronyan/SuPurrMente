@@ -66,7 +66,11 @@ fi
 # ── 2. Descifrar .env ────────────────────────────────────────────────────────
 if [ ! -f .env ]; then
     if [ -f .env.age ]; then
-        echo "Credenciales cifradas detectadas. Introduce la contraseña maestra:"
+        # Hint OPCIONAL de la passphrase, leído de un .env.hint LOCAL (gitignored). Nunca
+        # va en el repo (es público): si quieres verlo aquí, crea ./.env.hint con tu pista.
+        HINT=""
+        if [ -f .env.hint ]; then HINT=" ($(tr -d '\r\n' < .env.hint))"; fi
+        echo "Credenciales cifradas detectadas. Introduce la contraseña maestra${HINT}:"
         age --decrypt .env.age > .env
         chmod 600 .env
         echo "${OK} Credenciales descifradas y guardadas en .env (600)"

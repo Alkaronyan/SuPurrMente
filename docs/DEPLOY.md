@@ -49,14 +49,13 @@ históricos si no hay BD · `docker compose up -d`.
 
 ## 2. Pasos manuales (no son secretos)
 
-1. **Datos.** `/data` es **local** (bind `./data`); SQLite no vive sobre NFS. En un
-   despliegue nuevo, **restaura el último backup del NAS** a `./data` antes de arrancar:
+1. **Datos.** `/data` es **local** (bind `./data`); SQLite no vive sobre NFS. `setup.sh`
+   **restaura solo** del NAS si no hay BD local (con la clave **GLN1**, verbo `fetch`;
+   necesita la **VPN al NAS** arriba). Idempotente: si ya hay BD local, no la toca (la local
+   manda). Restaurar a mano si hiciera falta (la Pi NO tiene la clave de Alfred, va por GLN1):
    ```bash
-   mkdir -p data
-   scp -O alabama.gonzalez.team:/volume1/backups/SuPurrMente_data/weights.{db,csv} ./data/
+   docker compose exec -u tracker supurrmente python src/restore.py
    ```
-   (Sin esto arranca con BD vacía y acumula desde cero. Alternativa: copiar CSV históricos a
-   `app/deprecated/` y dejar que `setup.sh` los migre.)
 2. **NPM** (Nginx Proxy Manager): un **único forward** del dominio
    `supurrmente.gonzalez.team` → `<IP-de-la-Pi>:4180` (sin custom locations; oauth2-proxy
    reparte por ruta). ⚠️ Ver nota al final.

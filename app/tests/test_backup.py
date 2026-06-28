@@ -93,3 +93,18 @@ def test_build_manifest(tmp_path):
 
 def test_run_backup_disabled_returns_skipped():
     assert backup.run_backup({"backup": {"enabled": False}}) == {"skipped": True}
+
+
+def test_restore_skips_when_db_exists(tmp_path):
+    # Idempotencia: si ya hay BD local, NO se restaura (la local manda).
+    db = tmp_path / "weights.db"
+    db.write_bytes(b"x")
+    cfg = {"storage": {"sqlite_path": str(db), "csv_path": str(tmp_path / "w.csv")},
+           "backup": {"enabled": True}}
+    assert "skipped" in backup.restore_if_missing(cfg)
+
+
+def test_restore_skips_when_backup_disabled(tmp_path):
+    cfg = {"storage": {"sqlite_path": str(tmp_path / "nope.db"), "csv_path": str(tmp_path / "w.csv")},
+           "backup": {"enabled": False}}
+    assert "skipped" in backup.restore_if_missing(cfg)

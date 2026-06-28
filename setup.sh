@@ -101,17 +101,22 @@ echo "Construyendo imágenes Docker..."
 docker compose build
 echo "${OK} Imágenes construidas"
 
-# ── 5. Migración de datos históricos (solo si la BD local no existe) ─────────
+# ── 5. Datos: restaurar del NAS si no hay BD local; si no, migrar CSV ─────────
+# Idempotente: si ya hay BD local NO se toca (la local manda; el backup nunca es más
+# fresco). Si falta, se restaura del NAS con la clave GLN1 (verbo fetch; necesita la VPN
+# al NAS arriba). Si tampoco hay backup, se migran CSV históricos si los hubiera.
 DB_PATH="data/weights.db"
-if [ ! -f "$DB_PATH" ]; then
-    echo ""
-    echo "${WARN} No hay ./data/weights.db. Restaura el backup del NAS, o copia los CSV"
-    echo "        históricos a app/deprecated/ para migrarlos ahora (si no, BD vacía):"
-    docker compose run --rm supurrmente python src/migrate.py || true
-    echo "${OK} Migración intentada"
+if [ -f "$DB_PATH" ]; then
+    echo "${OK} Base de datos local existente — no se restaura (manda la local)"
 else
-    echo "${OK} Base de datos local existente — se omite la migración"
+    echo "No hay BD local. Restaurando el último backup del NAS (clave GLN1)..."
+    docker compose run --rm supurrmente python src/restore.py || true
 fi
+if [ ! -f "$DB_PATH" ]; then
+    echo "${WARN} Sin backup en el NAS. Migro CSV de app/deprecated/ si los hay (si no, BD vacía)."
+    docker compose run --rm supurrmente python src/migrate.py || true
+fi
+if [ -f "$DB_PATH" ]; then echo "${OK} BD local lista"; else echo "${WARN} Se arranca con BD vacía (acumulará desde la API)"; fi
 
 # ── 6. Iniciar servicios ─────────────────────────────────────────────────────
 echo ""

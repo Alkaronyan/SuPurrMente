@@ -260,3 +260,24 @@ def run_backup(config: dict) -> dict:
 
     log.info("Backup publicado: %s", manifest["counts"])
     return {"ok": True, "manifest": manifest}
+
+
+def restore_if_missing(config: dict) -> dict:
+    """Restaura `weights.db`/`.csv` del NAS **solo si no existe la BD local** (verbo fetch,
+    clave GLN1). Idempotente: nunca pisa una BD existente — la local es la fuente de verdad
+    (el backup nunca es más fresco). Devuelve {'restored': …} | {'skipped': motivo}."""
+    bcfg = config.get("backup", {})
+    db = config["storage"]["sqlite_path"]
+    csv = config["storage"]["csv_path"]
+    if os.path.exists(db):
+        return {"skipped": "ya existe la BD local (manda la local)"}
+    if not bcfg.get("enabled", False):
+        return {"skipped": "backup deshabilitado"}
+    if not _fetch(bcfg, "weights.db", db):
+        return {"skipped": "el NAS aún no tiene backup"}
+    try:
+        _fetch(bcfg, "weights.csv", csv)
+    except TransferError:
+        log.warning("CSV no restaurado (secundario); sigo con la BD")
+    log.info("Restaurado del NAS: %s", db)
+    return {"restored": db}

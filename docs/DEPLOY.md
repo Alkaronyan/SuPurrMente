@@ -18,15 +18,32 @@ sudo usermod -aG docker "$USER"   # solo si Docker se instaló ahora; re-loguea 
 
 ## 1. Clonar y arrancar
 
+**Un solo paso** (recomendado). Desde donde quieras el despliegue (p.ej. `/opt/stacks`):
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh
+bash deploy.sh
+```
+
+`deploy.sh` crea la carpeta con **tu** usuario como dueño (no root), clona dentro y lanza
+`setup.sh`. Así evita el fallo típico de clonar con `sudo` en sitios de root (`/opt/stacks`):
+si la carpeta es de root, `setup.sh` no podría escribir el `.env`. Sirve también para
+**reparar** un clon ya hecho con `sudo` (corrige la propiedad y hace `git pull`).
+No uses `curl ... | bash`: rompería los prompts interactivos (passphrase de age, sudo).
+
+<details><summary>Alternativa manual</summary>
+
 ```bash
 git clone https://github.com/Alkaronyan/SuPurrMente.git
 cd SuPurrMente
-bash setup.sh                      # pedirá la passphrase de age para descifrar .env
+bash setup.sh
 ```
+Si el directorio acaba siendo de root, tendrás "Permission denied" al escribir `.env`.
+</details>
 
-`setup.sh` hace, en orden: descifra `.env.age` → `.env` (600) · verifica Docker · avisa si
-el NFS no está montado · `docker compose build` · migra CSVs históricos **solo si** el NFS
-está montado y no existe la BD · `docker compose up -d`.
+`setup.sh` hace, en orden: instala deps de host que falten (`age`/Docker) · descifra
+`.env.age` → `.env` (600) · avisa si el NFS no está montado · `docker compose build` ·
+migra CSVs históricos **solo si** el NFS está montado y no existe la BD · `docker compose up -d`.
 
 ## 2. Pasos manuales (no son secretos)
 

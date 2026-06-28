@@ -104,10 +104,11 @@ echo "${OK} Imágenes construidas"
 # ── 5. Datos: restaurar del NAS si la BD local falta o está VACÍA (idempotente) ──
 # restore.py decide solo: si la local ya tiene datos, no la toca (la local manda; el backup
 # nunca es más fresco); si falta o está vacía (ensure_db crea una vacía en el 1er arranque),
-# la trae del NAS con la clave GLN1 (verbo fetch). Necesita la VPN al NAS arriba.
+# la trae del NAS con la clave GLN1 (verbo fetch). La Pi solo necesita poder alcanzar el
+# NAS (en la LAN es directo: alabama.gonzalez.team:22).
 echo "Comprobando datos locales (restauración del NAS si procede; clave GLN1)..."
 docker compose run --rm supurrmente python src/restore.py \
-    || echo "${WARN} Restauración no completada (¿VPN al NAS?). Se arrancará con lo que haya."
+    || echo "${WARN} Restauración no completada (¿se alcanza el NAS?). Se arrancará con lo que haya."
 
 # ── 6. Iniciar servicios ─────────────────────────────────────────────────────
 echo ""

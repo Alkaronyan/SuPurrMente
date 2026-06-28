@@ -50,9 +50,10 @@ históricos si no hay BD · `docker compose up -d`.
 ## 2. Pasos manuales (no son secretos)
 
 1. **Datos.** `/data` es **local** (bind `./data`); SQLite no vive sobre NFS. `setup.sh`
-   **restaura solo** del NAS si no hay BD local (con la clave **GLN1**, verbo `fetch`;
-   necesita la **VPN al NAS** arriba). Idempotente: si ya hay BD local, no la toca (la local
-   manda). Restaurar a mano si hiciera falta (la Pi NO tiene la clave de Alfred, va por GLN1):
+   **restaura solo** del NAS si la BD local falta o está vacía (con la clave **GLN1**, verbo
+   `fetch`; la Pi solo necesita poder alcanzar `alabama.gonzalez.team:22` — en la LAN, directo).
+   Idempotente: si ya hay BD local con datos, no la toca (la local manda). Restaurar a mano si
+   hiciera falta (la Pi NO tiene la clave de Alfred, va por GLN1):
    ```bash
    docker compose exec -u tracker supurrmente python src/restore.py
    ```
@@ -80,8 +81,9 @@ curl -so /dev/null -w '%{http_code}\n' http://localhost:4180/   # dashboard → 
 El job de backup (`backup.py`, cada `interval_days`) **empuja** una copia al NAS por SSH
 (verbos `deposit`/`fetch` contra un receptor confinado; ni rsync ni NFS). La clave dedicada
 viaja en `.env.age` → el entrypoint la deja en `/run/secrets/backup_ssh_key` (600,
-`tracker`). Por deploy solo hay que asegurar que **la Pi alcanza el NAS** (si va por VPN,
-la VPN del host levantada; el contenedor sale por el enrutado del host).
+`tracker`). Por deploy solo hay que asegurar que **la Pi alcanza el NAS**
+(`alabama.gonzalez.team:22`); en la LAN es directo y el contenedor sale por el enrutado del
+host. (La VPN, si la hay, es para acceso remoto, no para este tráfico Pi↔NAS en la LAN.)
 
 **Setup del NAS (one-time, ya hecho; aquí para reproducir o en otro NAS):**
 

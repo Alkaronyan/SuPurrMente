@@ -101,22 +101,13 @@ echo "Construyendo imágenes Docker..."
 docker compose build
 echo "${OK} Imágenes construidas"
 
-# ── 5. Datos: restaurar del NAS si no hay BD local; si no, migrar CSV ─────────
-# Idempotente: si ya hay BD local NO se toca (la local manda; el backup nunca es más
-# fresco). Si falta, se restaura del NAS con la clave GLN1 (verbo fetch; necesita la VPN
-# al NAS arriba). Si tampoco hay backup, se migran CSV históricos si los hubiera.
-DB_PATH="data/weights.db"
-if [ -f "$DB_PATH" ]; then
-    echo "${OK} Base de datos local existente — no se restaura (manda la local)"
-else
-    echo "No hay BD local. Restaurando el último backup del NAS (clave GLN1)..."
-    docker compose run --rm supurrmente python src/restore.py || true
-fi
-if [ ! -f "$DB_PATH" ]; then
-    echo "${WARN} Sin backup en el NAS. Migro CSV de app/deprecated/ si los hay (si no, BD vacía)."
-    docker compose run --rm supurrmente python src/migrate.py || true
-fi
-if [ -f "$DB_PATH" ]; then echo "${OK} BD local lista"; else echo "${WARN} Se arranca con BD vacía (acumulará desde la API)"; fi
+# ── 5. Datos: restaurar del NAS si la BD local falta o está VACÍA (idempotente) ──
+# restore.py decide solo: si la local ya tiene datos, no la toca (la local manda; el backup
+# nunca es más fresco); si falta o está vacía (ensure_db crea una vacía en el 1er arranque),
+# la trae del NAS con la clave GLN1 (verbo fetch). Necesita la VPN al NAS arriba.
+echo "Comprobando datos locales (restauración del NAS si procede; clave GLN1)..."
+docker compose run --rm supurrmente python src/restore.py \
+    || echo "${WARN} Restauración no completada (¿VPN al NAS?). Se arrancará con lo que haya."
 
 # ── 6. Iniciar servicios ─────────────────────────────────────────────────────
 echo ""

@@ -83,21 +83,13 @@ else
     echo "${OK} Credenciales: .env existe con permisos 600"
 fi
 
-# ── 3. Verificar montaje NFS ─────────────────────────────────────────────────
-NFS_MOUNT="/mnt/nas/cat-weights"
-if mountpoint -q "$NFS_MOUNT" 2>/dev/null; then
-    echo "${OK} NFS montado en $NFS_MOUNT"
-else
-    echo "${WARN} $NFS_MOUNT no está montado."
-    echo "      Para montarlo permanentemente, añade a /etc/fstab:"
-    echo "        <IP-NAS>:/volume1/cat-weights  $NFS_MOUNT  nfs  defaults,_netdev  0  0"
-    echo "      Luego: sudo mkdir -p $NFS_MOUNT && sudo mount -a"
-    echo ""
-    read -r -p "      Continuar sin NFS (los datos quedarán dentro del contenedor)? [s/N] " resp
-    if [[ ! "$resp" =~ ^[sS]$ ]]; then
-        exit 1
-    fi
-fi
+# ── 3. Datos locales (bind ./data) ───────────────────────────────────────────
+# El estado vivo (SQLite + CSV) es LOCAL: el contenedor monta ./data en /data (SQLite no
+# debe vivir sobre NFS). El NAS solo recibe la COPIA DE SEGURIDAD (push por SSH; el job de
+# backup la empuja cada few días). En un despliegue nuevo, restaura ./data/weights.db desde
+# el NAS antes de arrancar para no empezar de cero. Ver docs/DEPLOY.md.
+mkdir -p data
+echo "${OK} Datos locales en ./data (la copia de seguridad va al NAS por SSH)"
 
 # ── 4. Construir imágenes Docker ─────────────────────────────────────────────
 echo ""
@@ -105,15 +97,16 @@ echo "Construyendo imágenes Docker..."
 docker compose build
 echo "${OK} Imágenes construidas"
 
-# ── 5. Migración de datos históricos (solo si la BD no existe) ───────────────
-DB_PATH="$NFS_MOUNT/weights.db"
-if mountpoint -q "$NFS_MOUNT" 2>/dev/null && [ ! -f "$DB_PATH" ]; then
+# ── 5. Migración de datos históricos (solo si la BD local no existe) ─────────
+DB_PATH="data/weights.db"
+if [ ! -f "$DB_PATH" ]; then
     echo ""
-    echo "Base de datos no encontrada. Ejecutando migración de CSVs históricos..."
-    docker compose run --rm supurrmente python src/migrate.py
-    echo "${OK} Migración completada"
-elif [ -f "$DB_PATH" ]; then
-    echo "${OK} Base de datos existente detectada — se omite la migración"
+    echo "${WARN} No hay ./data/weights.db. Restaura el backup del NAS, o copia los CSV"
+    echo "        históricos a app/deprecated/ para migrarlos ahora (si no, BD vacía):"
+    docker compose run --rm supurrmente python src/migrate.py || true
+    echo "${OK} Migración intentada"
+else
+    echo "${OK} Base de datos local existente — se omite la migración"
 fi
 
 # ── 6. Iniciar servicios ─────────────────────────────────────────────────────

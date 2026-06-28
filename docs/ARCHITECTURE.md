@@ -79,7 +79,8 @@ IGNORE`, dedup CSV, cooldown de alertas).
 | `crosscheck.py` | Robustez secundaria: regresión de la tendencia reciente por gato; si el peso no encaja con el gato que dice la API, manda un email (no reasigna — la API manda) |
 | `timeutils.py` | Única fuente de verdad de zona horaria (Europe/Madrid) |
 | `storage/sqlite_store.py` | Primario; `visits`, `sent_alerts`, `api_meta`, `box_usage`, `robot_snapshots` |
-| `storage/csv_store.py` | Backup en NAS, versionado por API |
+| `storage/csv_store.py` | CSV de respaldo en `/data` (local), versionado por API |
+| `backup.py` | Copia al NAS por SSH (snapshot consistente + contrato + publicación atómica) |
 | `alerts/*` | Salud por gato, estado del robot, email |
 | `migrate.py` | Una vez: ingiere `deprecated/*.csv` → SQLite + CSV |
 | `ensure_db.py` | Crea el esquema SQLite al arrancar (Datasette no levanta sin BD) |
@@ -94,11 +95,28 @@ lo demás exige login. `tests/test_oauth_routes.py` verifica que no se afloje. (
 acepta perder la "doble red" del `allow_sql:false` — la BD cruda no es sensible aquí;
 los secretos sí, y esos los protege el aislamiento por usuario.)
 
-## Backup
+## Backup al NAS (push por SSH, no NFS)
 
-CSV (`/data/weights.csv`) en el mismo volumen que la BD. En producción `/data` es el
-montaje **NFS → Synology NAS**. Auto-descriptivo y versionado por API (cabecera
-`# api_version:`, rota al cambiar la versión de Whisker). Ver `csv_store.py`.
+**El dato vivo es LOCAL**: `/data` es un bind del host (SQLite no debe vivir sobre NFS —
+se corrompe). El NAS es solo **destino de copia**, y el contenedor **empuja** (no monta).
+
+`backup.py` corre como job programado (cada `interval_days`, ver `webapp.py`) y, en cada
+copia: **(1)** snapshot consistente en caliente (`VACUUM INTO` + `integrity_check`);
+**(2)** baja el backup anterior del NAS y valida el **contrato de consistencia** —
+superconjunto por identidad (backup ⊆ snapshot), conteos que no decrecen, `max(ts)` que no
+retrocede (el backfill de fechas viejas es legítimo, no se penaliza); **(3)** si pasa,
+**publica atómico** (`.part` → `mv` en el NAS) `weights.db`/`.csv`, una copia datada en
+`history/` (rotada a `retention`) y `manifest.json`; **(4)** si falla, **no publica**:
+cuarentena local + `report.json` para forense, y email crítico. Un corte de red nunca pisa
+la última copia buena (verificación previa + rename atómico).
+
+Transporte: **SSH-exec con verbos `deposit`/`fetch`** contra un receptor confinado en el
+NAS (`backup-only.sh`: `cat`→`.part`→`mv`, acotado por `basename`). Ni rsync ni SFTP — el
+NAS solo hace `cat`/`mv`. Clave **dedicada** de mínimo privilegio (identidad GLN1,
+forced-command), en `.env` cifrada → fichero 600 de `tracker`. Setup en `docs/DEPLOY.md`.
+
+El CSV local (`/data/weights.csv`) sigue siendo auto-descriptivo y versionado por API
+(cabecera `# api_version:`, rota al cambiar la versión de Whisker). Ver `csv_store.py`.
 
 ## Configuración
 

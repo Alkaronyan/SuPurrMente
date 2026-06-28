@@ -1,9 +1,9 @@
 # Despliegue — SuPurrMente (Raspberry Pi)
 
-Resumen: **clonar + `bash setup.sh`**. El script descifra `.env.age`, comprueba el NFS,
-construye la imagen, migra si no hay BD y arranca el contenedor. Todos los **secretos
-viajan cifrados** en `.env.age` (Gmail + OAuth de Google completo); solo necesitas la
-passphrase de `age`. Lo único manual es infraestructura/datos y el login de Whisker.
+Resumen: **clonar + `bash setup.sh`**. El script descifra `.env.age`, construye la imagen,
+migra si no hay BD y arranca el contenedor. Todos los **secretos viajan cifrados** en
+`.env.age` (Gmail + OAuth de Google + clave del backup); solo necesitas la passphrase de
+`age`. Lo único manual es datos/red, el login de Whisker y (one-time) el receptor del NAS.
 
 ## 0. Requisitos en la Pi (una vez)
 
@@ -18,18 +18,20 @@ sudo usermod -aG docker "$USER"   # solo si Docker se instaló ahora; re-loguea 
 
 ## 1. Clonar y arrancar
 
-**Un solo paso** (recomendado). Desde donde quieras el despliegue (p.ej. `/opt/stacks`):
+**Un solo comando** (recomendado). Desde donde quieras el despliegue (p.ej. `/opt/stacks`):
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh
-bash deploy.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh)
 ```
 
 `deploy.sh` crea la carpeta con **tu** usuario como dueño (no root), clona dentro y lanza
 `setup.sh`. Así evita el fallo típico de clonar con `sudo` en sitios de root (`/opt/stacks`):
 si la carpeta es de root, `setup.sh` no podría escribir el `.env`. Sirve también para
 **reparar** un clon ya hecho con `sudo` (corrige la propiedad y hace `git pull`).
-No uses `curl ... | bash`: rompería los prompts interactivos (passphrase de age, sudo).
+
+Se usa `bash <(...)` (sustitución de proceso), **no `curl | bash`**: con la tubería, el
+script ocuparía el stdin y se romperían los prompts (passphrase de age, sudo). Con
+`bash <(...)` el terminal sigue siendo el stdin y todo funciona.
 
 <details><summary>Alternativa manual</summary>
 
@@ -42,25 +44,23 @@ Si el directorio acaba siendo de root, tendrás "Permission denied" al escribir 
 </details>
 
 `setup.sh` hace, en orden: instala deps de host que falten (`age`/Docker) · descifra
-`.env.age` → `.env` (600) · avisa si el NFS no está montado · `docker compose build` ·
-migra CSVs históricos **solo si** el NFS está montado y no existe la BD · `docker compose up -d`.
+`.env.age` → `.env` (600) · prepara `./data` (local) · `docker compose build` · migra CSVs
+históricos si no hay BD · `docker compose up -d`.
 
 ## 2. Pasos manuales (no son secretos)
 
-1. **Datos históricos.** `data/weights.db`/`.csv` y los CSV de `app/deprecated/` están
-   *gitignored* (no vienen en el clone). Copia tu `weights.db` + `weights.csv` de dev al
-   recurso **NFS del NAS** antes del primer arranque, o el sistema empezará con BD vacía y
-   acumulará desde cero. (Alternativa: copiar los CSV a `app/deprecated/` y dejar que
-   `setup.sh` los migre.)
-2. **NFS** montado en `/etc/fstab` apuntando al NAS, p.ej.:
+1. **Datos.** `/data` es **local** (bind `./data`); SQLite no vive sobre NFS. En un
+   despliegue nuevo, **restaura el último backup del NAS** a `./data` antes de arrancar:
+   ```bash
+   mkdir -p data
+   scp -O alabama.gonzalez.team:/volume1/backups/SuPurrMente_data/weights.{db,csv} ./data/
    ```
-   <IP-NAS>:/volume1/cat-weights  /mnt/nas/cat-weights  nfs  defaults,_netdev  0  0
-   ```
-   (o acepta datos dentro del contenedor cuando `setup.sh` pregunte).
-3. **NPM** (Nginx Proxy Manager): un **único forward** del dominio
+   (Sin esto arranca con BD vacía y acumula desde cero. Alternativa: copiar CSV históricos a
+   `app/deprecated/` y dejar que `setup.sh` los migre.)
+2. **NPM** (Nginx Proxy Manager): un **único forward** del dominio
    `supurrmente.gonzalez.team` → `<IP-de-la-Pi>:4180` (sin custom locations; oauth2-proxy
    reparte por ruta). ⚠️ Ver nota al final.
-4. **Token de Whisker.** Tras el arranque, abre `https://supurrmente.gonzalez.team/whisker-login`
+3. **Token de Whisker.** Tras el arranque, abre `https://supurrmente.gonzalez.team/whisker-login`
    (entra con Google `@gonzalez.team`) e introduce usuario+contraseña de Whisker **una vez**:
    se emite y guarda el token revocable; la contraseña no se almacena. Si no hay token, el
    sistema te manda un email con ese enlace.
@@ -75,6 +75,31 @@ curl -so /dev/null -w '%{http_code}\n' http://localhost:4180/   # dashboard → 
 
 - Dashboard (público): `https://supurrmente.gonzalez.team/`
 - Explorador / SQL (login Google): `https://supurrmente.gonzalez.team/weights`
+
+## Copia de seguridad al NAS
+
+El job de backup (`backup.py`, cada `interval_days`) **empuja** una copia al NAS por SSH
+(verbos `deposit`/`fetch` contra un receptor confinado; ni rsync ni NFS). La clave dedicada
+viaja en `.env.age` → el entrypoint la deja en `/run/secrets/backup_ssh_key` (600,
+`tracker`). Por deploy solo hay que asegurar que **la Pi alcanza el NAS** (si va por VPN,
+la VPN del host levantada; el contenedor sale por el enrutado del host).
+
+**Setup del NAS (one-time, ya hecho; aquí para reproducir o en otro NAS):**
+
+1. En `~GLN1/.ssh/authorized_keys`, la pública de la clave dedicada con forced-command:
+   ```
+   command="/var/services/homes/GLN1/backup-only.sh",restrict ssh-ed25519 AAAA… gln1-backup
+   ```
+   Perms estrictos (Synology `StrictModes`): home `700`, `.ssh` `700`, `authorized_keys` `600`,
+   todo propiedad de `GLN1`, y **cada clave en su línea**.
+2. El receptor `~GLN1/backup-only.sh` (`700`): `cat`→`.part`→`mv` atómico, confinado por
+   `basename` a `/volume1/backups/SuPurrMente_data` (verbos deposit/fetch/list/remove-history).
+3. **ACL** (GLN1 está vetado en el share `backups` por política de nodos): darle a GLN1
+   **solo Atravesar** en `backups` (editando su `deny` para que no incluya travesía) y
+   **Lectura/Escritura** en `SuPurrMente_data`. Así escribe su subcarpeta sin ver el resto.
+
+Restaurar = copiar `weights.db`/`.csv` de `…/SuPurrMente_data/` a `./data` (paso 1 de arriba).
+Las copias datadas para volver atrás están en `…/SuPurrMente_data/history/`.
 
 ## Check one-time en Google (no se rellena nada)
 

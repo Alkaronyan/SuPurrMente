@@ -30,6 +30,13 @@ grep -E '^OAUTH2_PROXY_'                              "$ENV_FILE" > "$SECRETS_DI
 chown tracker:tracker "$SECRETS_DIR/tracker.env"; chmod 600 "$SECRETS_DIR/tracker.env"
 chown oauth:oauth     "$SECRETS_DIR/oauth.env";   chmod 600 "$SECRETS_DIR/oauth.env"
 
+# Clave SSH del backup (base64 en .env) → fichero 600 de 'tracker' (jamás de 'oauth').
+BK_LINE=$(grep -E '^BACKUP_SSH_KEY_B64=' "$ENV_FILE" || true)
+if [ -n "$BK_LINE" ]; then
+    printf '%s' "${BK_LINE#BACKUP_SSH_KEY_B64=}" | base64 -d > "$SECRETS_DIR/backup_ssh_key"
+    chown tracker:tracker "$SECRETS_DIR/backup_ssh_key"; chmod 600 "$SECRETS_DIR/backup_ssh_key"
+fi
+
 # ── /data: lo escribe 'tracker'; 'datasette' lo lee por el grupo 'data' ────────
 # setgid (2750) → los ficheros heredan grupo 'data'; con umask 027 salen 640. El token
 # lo fuerza el código a 600 (solo 'tracker'), así datasette no lo ve.

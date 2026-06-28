@@ -75,8 +75,11 @@ token de Whisker, manda el email de "inicia sesión" en vez de recoger datos).
 ```
 GMAIL_APP_PASSWORD=        OAUTH2_PROXY_CLIENT_ID=        OAUTH2_PROXY_COOKIE_SECRET=
 FROM_EMAIL=alfred@…        OAUTH2_PROXY_CLIENT_SECRET=    OAUTH2_PROXY_REDIRECT_URL=
-TO_EMAILS=joaquin@…
+TO_EMAILS=joaquin@…        BACKUP_SSH_KEY_B64=            (clave dedicada del backup, base64)
 ```
+
+`BACKUP_SSH_KEY_B64` es la clave SSH del backup (identidad GLN1) en base64; el entrypoint
+la decodifica a `/run/secrets/backup_ssh_key` (600, `tracker`). Nunca la ve `oauth`.
 
 **Ya NO hay `WHISKER_USERNAME/PASSWORD`**: Whisker se autentica por token (formulario web).
 `.env.age` (cifrado con `age`) SÍ se commitea. El `.env` descifrado se **monta como
@@ -106,6 +109,14 @@ vivo del token/conexión: `app/src/verify_token.py`.
 `visits` (peso por gato), `sent_alerts` (cooldown), `api_meta` (cambios de versión),
 `box_usage` (ciclos/día del robot), `robot_snapshots` (arena/cajón/online).
 
-**Backup = CSV en el mismo volumen (`/data`) → NFS al NAS en producción (no OneDrive).**
-El CSV es auto-descriptivo: cabecera `# api_version:` y rota a un fichero nuevo cuando
-cambia la versión de la API (una era de API por fichero). `csv.write(visits, api_version)`.
+**`/data` es LOCAL (bind del host)** — SQLite no debe vivir sobre NFS. El CSV de respaldo
+vive ahí también, auto-descriptivo: cabecera `# api_version:` y rota a un fichero nuevo
+cuando cambia la versión de la API. `csv.write(visits, api_version)`.
+
+**Backup al NAS = push por SSH, no NFS** (`backup.py`, job cada `interval_days`). Snapshot
+consistente (`VACUUM INTO`) → contrato de consistencia (superconjunto + `integrity_check`,
+bajando el backup previo con `fetch`) → publicación **atómica** (`.part`→`mv`) de
+`weights.db`/`.csv` + `history/` datada/rotada + `manifest.json`. En fallo: no publica,
+cuarentena forense + email. Transporte: verbos `deposit`/`fetch` contra `backup-only.sh`
+(receptor confinado en el NAS); clave dedicada GLN1 (forced-command) en `.env`→600 `tracker`.
+Nunca pisa la última copia buena (verifica antes + rename atómico). Setup en `docs/DEPLOY.md`.

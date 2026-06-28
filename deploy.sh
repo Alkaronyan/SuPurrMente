@@ -5,12 +5,13 @@
 # y lanza setup.sh. Resuelve el problema típico de clonar con `sudo` en sitios de root
 # (p.ej. /opt/stacks): si la carpeta es de root, setup.sh no puede escribir el .env.
 #
-# Uso (desde donde quieras el despliegue, p.ej. /opt/stacks):
-#   curl -fsSLO https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh
-#   bash deploy.sh
+# Uso — un solo comando (desde donde quieras el despliegue, p.ej. /opt/stacks):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Alkaronyan/SuPurrMente/main/deploy.sh)
 #
-# Funciona tanto si lo lanzas como tu usuario (usa sudo solo para mkdir/chown) como con
-# `sudo bash deploy.sh` (clona y arranca como tu usuario humano, no como root).
+# Se usa `bash <(...)` (sustitución de proceso), NO `curl | bash`: así el script llega por un
+# descriptor de fichero y el terminal sigue siendo stdin → la passphrase de age y el sudo
+# funcionan. Llama a setup.sh internamente. Funciona como tu usuario (sudo solo para
+# mkdir/chown) o con `sudo bash <(...)` (clona y arranca como tu usuario humano, no root).
 set -euo pipefail
 
 REPO="https://github.com/Alkaronyan/SuPurrMente.git"

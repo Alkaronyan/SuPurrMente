@@ -10,7 +10,10 @@ services:
   supurrmente:
     build: ./app
     volumes:
-      - /mnt/nas/cat-weights:/data
+      # /data es LOCAL (bind en el host): SQLite + CSV vivos. NO se monta el NAS aquí
+      # (SQLite sobre NFS se corrompe). La copia de seguridad se EMPUJA al NAS por SSH
+      # desde el job de backup (ver app/src/backup.py y docs/DEPLOY.md).
+      - ./data:/data
       - ./app/config.yml:/app/config.yml
       - ./.env:/app/.env:ro
     ports:

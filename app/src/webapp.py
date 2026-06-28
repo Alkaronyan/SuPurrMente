@@ -10,11 +10,13 @@ Dos cometidos:
 
 Lo arranca uvicorn: ``uvicorn webapp:app --host 127.0.0.1 --port 8082`` (1 worker).
 """
+import asyncio
 import logging
 import os
 import secrets
 import sys
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -24,6 +26,7 @@ from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, PlainTextResponse
 from starlette.routing import Route
 
+import backup
 import timeutils
 import whisker_auth
 from main import load_config, run_pipeline
@@ -149,6 +152,38 @@ async def _fetch_job():
     await run_pipeline(config)
 
 
+def _alert_backup_failure(error) -> None:
+    """Email crítico de backup fallido (con cooldown). Importes locales para no acoplar
+    el arranque del scheduler al stack de alertas."""
+    from alerts.health import Alert
+    from main import _send_with_cooldown
+    from storage.sqlite_store import SQLiteStore
+    alert = Alert(cat="sistema", severity="critical", kind="backup_failed",
+                  message=f"El backup al NAS falló: {error}")
+    _send_with_cooldown(config, SQLiteStore(config), [alert])
+
+
+async def _backup_job():
+    """Backup al NAS. En fallo: email + reintento antes del intervalo normal (el dato vivo
+    es local y nunca se toca; ver backup.py)."""
+    bcfg = config.get("backup", {})
+    if not bcfg.get("enabled", False):
+        return
+    log.info("Backup programado al NAS")
+    try:
+        result = await asyncio.to_thread(backup.run_backup, config)
+        if result.get("ok"):
+            log.info("Backup OK: %s", result["manifest"]["counts"])
+    except Exception as e:  # ConsistencyError/TransferError/inesperado
+        log.exception("Backup falló")
+        await asyncio.to_thread(_alert_backup_failure, e)
+        retry_days = bcfg.get("retry_on_fail_days", 1)
+        if _scheduler.running:
+            _scheduler.add_job(_backup_job, "date",
+                               run_date=timeutils.now() + timedelta(days=retry_days),
+                               id="backup-retry", replace_existing=True)
+
+
 async def _refresh_job():
     """Refresca el token si ya pasó la media vida del access token."""
     try:
@@ -169,8 +204,13 @@ def _start():
                        id="fetch", replace_existing=True, max_instances=1, coalesce=True)
     _scheduler.add_job(_refresh_job, IntervalTrigger(minutes=15),
                        id="refresh", replace_existing=True, max_instances=1, coalesce=True)
+    bcfg = config.get("backup", {})
+    if bcfg.get("enabled", False):
+        _scheduler.add_job(_backup_job, IntervalTrigger(days=int(bcfg.get("interval_days", 4))),
+                           id="backup", replace_existing=True, max_instances=1, coalesce=True)
     _scheduler.start()
-    log.info("Scheduler arrancado: fetch '%s', refresco cada 15 min (media vida)", fetch_cron)
+    log.info("Scheduler arrancado: fetch '%s', refresco 15 min, backup cada %s días",
+             fetch_cron, config.get("backup", {}).get("interval_days", 4))
 
 
 def _stop():

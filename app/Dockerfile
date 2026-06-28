@@ -3,8 +3,9 @@ FROM quay.io/oauth2-proxy/oauth2-proxy:v7.6.0 AS oauth2
 
 FROM python:3.11-slim-bookworm
 
+# supervisor+tini para el stack; openssh-client para el backup al NAS (SSH-exec, sin rsync).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends supervisor tini \
+    && apt-get install -y --no-install-recommends supervisor tini openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Usuarios sin login, UIDs fijos (estables para los permisos del volumen /data).

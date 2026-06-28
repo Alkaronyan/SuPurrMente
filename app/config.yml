@@ -58,6 +58,21 @@ storage:
   sqlite_path: "/data/weights.db"
   csv_path: "/data/weights.csv"
 
+backup:
+  # Copia del estado al NAS por SSH-exec (verbos deposit/fetch contra un receptor
+  # confinado; ni rsync ni SFTP). El dato vivo es LOCAL (bind /data); aquí solo se EMPUJA
+  # una copia con contrato de consistencia (superconjunto + integrity_check) y publicación
+  # atómica (.part → mv en el NAS). Ver backup.py. La RUTA de destino vive en el receptor
+  # del NAS (backup-only.sh), no aquí. La clave privada va en .env (cifrada).
+  enabled: true
+  host: "alabama.gonzalez.team"
+  user: "GLN1"
+  ssh_key_path: "/run/secrets/backup_ssh_key"   # lo escribe el entrypoint (600, tracker)
+  known_hosts: "/data/.ssh_known_hosts"         # se fija en el primer enlace (TOFU)
+  interval_days: 4
+  retry_on_fail_days: 1                          # si falla, reintenta antes de los 4 días
+  retention: 8                                  # nº de copias datadas que se conservan
+
 email:
   smtp_host: "smtp.gmail.com"
   smtp_port: 587

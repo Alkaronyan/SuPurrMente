@@ -64,3 +64,38 @@ Probado end-to-end contra el NAS real (dev): dos pasadas `ok: true`, ficheros en
 **propiedad de GLN1** (`weights.db` compactado por VACUUM, `weights.csv`, `manifest.json`,
 `history/` con copias datadas), y la 2ª pasada ejerció el `fetch` + contrato de
 consistencia. Setup del NAS documentado en `docs/DEPLOY.md`.
+
+## Restauración (seed del deploy) y despliegue en la Pi
+
+`restore.py` + `backup.restore_if_missing`: en un despliegue nuevo, si la BD local **falta
+o está vacía** (`ensure_db` crea una vacía al arrancar), la trae del NAS con el verbo
+`fetch` (clave GLN1). **Idempotente**: si la local ya tiene datos, no la toca — la local es
+la fuente de verdad (el backup nunca es más fresco), así que no hay que "comparar" nada.
+`setup.sh` lo llama siempre (decide `restore.py` por nº de filas, no por existencia del
+fichero). En modo comando la clave se saca del `.env` montado; en `exec`, de `/run/secrets`.
+
+Desplegado en `glnode1` (Pi) con `bash <(curl … deploy.sh)`: deps + descifrado + build +
+**restore del NAS** (`{'restored': '/data/weights.db'}`) + arranque. Los 3 procesos RUNNING,
+dashboard servido por HTTPS (NPM → oauth2-proxy → Google, autenticado), scheduler con los 3
+jobs (fetch 6h, refresco 15 min, backup 4 días). Login de Whisker → ciclo inmediato OK.
+
+Correcciones de despliegue de esta tanda: `migrate.py` no peta si no existe `deprecated/`;
+`/data` es **bind local** (no NFS) en compose/setup; deploy en **un comando** con
+`bash <(curl …)` (no `curl | bash`, que rompe los prompts de age/sudo); el resumen de
+`setup.sh` ya no hardcodea URL/puerto (URL del redirect de OAuth, puerto del mapeo de Docker).
+
+## Lección: el backup va por LAN, no por VPN
+
+Estuve arrastrando un "VPN al NAS arriba" de un comentario inicial sin verificarlo. Medido en
+la Pi: `alabama.gonzalez.team` → `192.168.0.250` (misma subred), ruta `dev eth0` → **LAN
+directa**. Hay interfaces VPN (`wg0`/`tun0`/`tun1`) pero el tráfico al NAS no las toca.
+
+## Lección: hueco de datos del 26–28 jun = fallo del robot, no nuestro
+
+Dos días sin datos — **también en la app oficial de Whisker**. Eso prueba que el fallo fue
+del **LR4 → nube de Whisker** (conectividad/firmware del robot colgada), no de nuestro
+sistema (que está aguas abajo y no puede afectar a la app oficial). El corte fue el 26-jun,
+**antes** de tocar las conexiones del NAS (28-jun): lo descubrimos, no lo causamos. Un
+apagado/encendido del robot lo arregló. En producción, la **alerta de ausencia** (24h) y los
+`robot_snapshots`/`is_online` cazarían esto con un email — durante el hueco el sistema aún no
+corría en prod, por eso no saltó.

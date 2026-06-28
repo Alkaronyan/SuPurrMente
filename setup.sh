@@ -117,14 +117,18 @@ docker compose up -d
 echo "${OK} Servicios iniciados"
 
 # ── 7. Resumen ───────────────────────────────────────────────────────────────
-LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+# URL base que Google espera = el redirect de OAuth sin /oauth2/callback (no hardcodeado).
+BASE_URL=$(grep '^OAUTH2_PROXY_REDIRECT_URL=' .env | cut -d= -f2-)
+BASE_URL="${BASE_URL%/oauth2/callback}"
+# IP:puerto REALES tras levantar: el puerto se lee del mapeo de Docker (refleja cambios).
+HOST_PORT=$(docker compose port supurrmente 4180 2>/dev/null | head -n1); HOST_PORT="${HOST_PORT##*:}"
+LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+
 echo ""
-echo -e "${BOLD}Sistema en marcha${RESET}"
-echo "  Dashboard          : https://supurrmente.gonzalez.team/            (público)"
-echo "  Explorador / login : https://supurrmente.gonzalez.team/weights     (login Google @gonzalez.team)"
-echo "  Conectar Whisker   : https://supurrmente.gonzalez.team/whisker-login"
-echo "  Procesos           : docker compose exec supurrmente supervisorctl status"
-echo "  Logs               : docker compose logs -f supurrmente"
-echo ""
-echo "  NPM: un único forward del dominio → ${LOCAL_IP}:4180  (sin custom locations)."
-echo "       oauth2-proxy reparte por ruta y decide qué es público."
+if [ -n "$BASE_URL" ]; then
+    echo -e "${WARN} La app debe servirse en ${BOLD}${BASE_URL}${RESET} para que funcione el login"
+    echo "        de Google (el redirect de OAuth está registrado en esa URL)."
+    echo ""
+fi
+echo "  Disponible en    : http://${LOCAL_IP}:${HOST_PORT}"
+echo "  Conectar Whisker : ${BASE_URL}/whisker-login"

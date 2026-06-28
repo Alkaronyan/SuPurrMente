@@ -81,6 +81,7 @@ IGNORE`, dedup CSV, cooldown de alertas).
 | `storage/sqlite_store.py` | Primario; `visits`, `sent_alerts`, `api_meta`, `box_usage`, `robot_snapshots` |
 | `storage/csv_store.py` | CSV de respaldo en `/data` (local), versionado por API |
 | `backup.py` | Copia al NAS por SSH (snapshot consistente + contrato + publicación atómica) |
+| `restore.py` | Restaura la BD del NAS si falta o está vacía (deploy nuevo); idempotente |
 | `alerts/*` | Salud por gato, estado del robot, email |
 | `migrate.py` | Una vez: ingiere `deprecated/*.csv` → SQLite + CSV |
 | `ensure_db.py` | Crea el esquema SQLite al arrancar (Datasette no levanta sin BD) |
